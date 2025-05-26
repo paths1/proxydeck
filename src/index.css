@@ -1,0 +1,437 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Custom animations */
+@keyframes pulse-ring {
+  0% {
+    transform: scale(0.95);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.3);
+    opacity: 0.5;
+  }
+  100% {
+    transform: scale(1.5);
+    opacity: 0;
+  }
+}
+
+.animate-pulse-ring {
+  animation: pulse-ring 2s ease-out infinite;
+}
+
+@layer base {
+  /* Typography system variables */
+  :root {
+    /* Type scale */
+    --type-xs: 0.75rem;    /* 12px */
+    --type-sm: 0.875rem;   /* 14px */
+    --type-base: 1rem;     /* 16px */
+    --type-lg: 1.125rem;   /* 18px */
+    --type-xl: 1.25rem;    /* 20px */
+    --type-2xl: 1.5rem;    /* 24px */
+    --type-3xl: 1.875rem;  /* 30px */
+    
+    /* Font weights */
+    --font-normal: 400;
+    --font-medium: 500;
+    --font-semibold: 600;
+    --font-bold: 700;
+    
+    /* Line heights */
+    --leading-none: 1;
+    --leading-tight: 1.25;
+    --leading-snug: 1.375;
+    --leading-normal: 1.5;
+    --leading-relaxed: 1.625;
+    --leading-loose: 2;
+    
+    /* Letter spacing */
+    --tracking-tighter: -0.05em;
+    --tracking-tight: -0.025em;
+    --tracking-normal: 0;
+    --tracking-wide: 0.025em;
+    --tracking-wider: 0.05em;
+  }
+  
+  * {
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  
+  body {
+    font-size: var(--type-base);
+    line-height: var(--leading-normal);
+    font-weight: var(--font-normal);
+    letter-spacing: var(--tracking-normal);
+  }
+  
+  /* Headings */
+  h1, h2, h3, h4, h5, h6 {
+    line-height: var(--leading-tight);
+    letter-spacing: var(--tracking-tight);
+  }
+  
+  h1 {
+    font-size: var(--type-3xl);
+    font-weight: var(--font-bold);
+  }
+  
+  h2 {
+    font-size: var(--type-2xl);
+    font-weight: var(--font-semibold);
+  }
+  
+  h3 {
+    font-size: var(--type-xl);
+    font-weight: var(--font-semibold);
+  }
+  
+  h4 {
+    font-size: var(--type-lg);
+    font-weight: var(--font-medium);
+  }
+  
+  /* Labels and form elements */
+  label {
+    font-size: var(--type-sm);
+    font-weight: var(--font-medium);
+    line-height: var(--leading-normal);
+  }
+  
+  input, textarea, select {
+    font-size: var(--type-sm);
+    line-height: var(--leading-normal);
+  }
+  
+  /* Buttons */
+  button {
+    font-size: var(--type-sm);
+    font-weight: var(--font-medium);
+    letter-spacing: var(--tracking-wide);
+  }
+  
+  /* Small text */
+  small, .caption {
+    font-size: var(--type-xs);
+    line-height: var(--leading-relaxed);
+  }
+  
+  /* Code and monospace */
+  code, pre {
+    font-family: ui-monospace, SFMono-Regular, SF Mono, Consolas, 
+                 Liberation Mono, Menlo, monospace;
+    font-size: 0.875em;
+  }
+  
+  :root {
+    --radius: 0.5rem;
+    --background: 0 0% 100%;
+    --foreground: 0 0% 9%;
+    --card: 0 0% 100%;
+    --card-foreground: 0 0% 9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 0 0% 9%;
+    --primary: 0 0% 13%;
+    --primary-foreground: 0 0% 98%;
+    --secondary: 0 0% 96%;
+    --secondary-foreground: 0 0% 13%;
+    --muted: 0 0% 96%;
+    --muted-foreground: 0 0% 55%;
+    --accent: 0 0% 96%;
+    --accent-foreground: 0 0% 13%;
+    --destructive: 7 86% 51%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 0 0% 91%;
+    --input: 0 0% 91%;
+    --ring: 0 0% 64%;
+    --chart-1: 30 80% 55%;
+    --chart-2: 201 94% 37%;
+    --chart-3: 280 87% 35%;
+    --chart-4: 83 74% 59%;
+    --chart-5: 47 74% 73%;
+    --sidebar: 0 0% 98%;
+    --sidebar-foreground: 0 0% 9%;
+    --sidebar-primary: 0 0% 13%;
+    --sidebar-primary-foreground: 0 0% 98%;
+    --sidebar-accent: 0 0% 96%;
+    --sidebar-accent-foreground: 0 0% 13%;
+    --sidebar-border: 0 0% 91%;
+    --sidebar-ring: 0 0% 64%;
+  }
+
+  .dark {
+    --background: 0 0% 9%;
+    --foreground: 0 0% 98%;
+    --card: 0 0% 13%;
+    --card-foreground: 0 0% 98%;
+    --popover: 0 0% 13%;
+    --popover-foreground: 0 0% 98%;
+    --primary: 0 0% 98%;
+    --primary-foreground: 0 0% 13%;
+    --secondary: 0 0% 26%;
+    --secondary-foreground: 0 0% 98%;
+    --muted: 0 0% 26%;
+    --muted-foreground: 0 0% 64%;
+    --accent: 0 0% 26%;
+    --accent-foreground: 0 0% 98%;
+    --destructive: 0 100% 30%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 0 0% 26%;
+    --input: 0 0% 26%;
+    --ring: 0 0% 45%;
+    --chart-1: 252 97% 62%;
+    --chart-2: 160 69% 63%;
+    --chart-3: 47 74% 73%;
+    --chart-4: 280 100% 70%;
+    --chart-5: 15 100% 76%;
+    --sidebar: 0 0% 13%;
+    --sidebar-foreground: 0 0% 98%;
+    --sidebar-primary: 252 97% 62%;
+    --sidebar-primary-foreground: 0 0% 98%;
+    --sidebar-accent: 0 0% 26%;
+    --sidebar-accent-foreground: 0 0% 98%;
+    --sidebar-border: 0 0% 26%;
+    --sidebar-ring: 0 0% 45%;
+  }
+
+  * {
+    border-color: hsl(var(--border));
+  }
+
+  body {
+    background-color: hsl(var(--background));
+    color: hsl(var(--foreground));
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+
+  /* Remove custom checkbox and switch styles - using Shadcn components */
+  
+  /* Ensure only interactive elements are tab-focusable */
+  div:not([role="button"]):not([role="tab"]):not([role="menuitem"]):not([tabindex]),
+  span:not([role="button"]):not([role="tab"]):not([role="menuitem"]):not([tabindex]) {
+    /* Prevent accidental focus on non-interactive elements */
+    &:focus {
+      outline: none;
+    }
+  }
+  
+  /* Ensure proper focus visible for interactive elements only */
+  [role="button"]:not(button):not(a),
+  [tabindex="0"]:not(button):not(a):not(input):not(textarea):not(select) {
+    &:focus-visible {
+      outline: 2px solid hsl(var(--ring));
+      outline-offset: 2px;
+    }
+  }
+}
+
+/* Utility classes for typography */
+@layer utilities {
+  .text-xs {
+    font-size: var(--type-xs);
+    line-height: var(--leading-relaxed);
+  }
+  
+  .text-sm {
+    font-size: var(--type-sm);
+    line-height: var(--leading-normal);
+  }
+  
+  .text-base {
+    font-size: var(--type-base);
+    line-height: var(--leading-normal);
+  }
+  
+  .text-lg {
+    font-size: var(--type-lg);
+    line-height: var(--leading-normal);
+  }
+  
+  .text-xl {
+    font-size: var(--type-xl);
+    line-height: var(--leading-tight);
+  }
+  
+  .text-2xl {
+    font-size: var(--type-2xl);
+    line-height: var(--leading-tight);
+  }
+  
+  .text-3xl {
+    font-size: var(--type-3xl);
+    line-height: var(--leading-tight);
+  }
+  
+  /* Font weight utilities */
+  .font-normal {
+    font-weight: var(--font-normal);
+  }
+  
+  .font-medium {
+    font-weight: var(--font-medium);
+  }
+  
+  .font-semibold {
+    font-weight: var(--font-semibold);
+  }
+  
+  .font-bold {
+    font-weight: var(--font-bold);
+  }
+  
+  /* Line height utilities */
+  .leading-none {
+    line-height: var(--leading-none);
+  }
+  
+  .leading-tight {
+    line-height: var(--leading-tight);
+  }
+  
+  .leading-snug {
+    line-height: var(--leading-snug);
+  }
+  
+  .leading-normal {
+    line-height: var(--leading-normal);
+  }
+  
+  .leading-relaxed {
+    line-height: var(--leading-relaxed);
+  }
+  
+  .leading-loose {
+    line-height: var(--leading-loose);
+  }
+  
+  /* Letter spacing utilities */
+  .tracking-tighter {
+    letter-spacing: var(--tracking-tighter);
+  }
+  
+  .tracking-tight {
+    letter-spacing: var(--tracking-tight);
+  }
+  
+  .tracking-normal {
+    letter-spacing: var(--tracking-normal);
+  }
+  
+  .tracking-wide {
+    letter-spacing: var(--tracking-wide);
+  }
+  
+  .tracking-wider {
+    letter-spacing: var(--tracking-wider);
+  }
+  
+  /* Special utilities */
+  .text-balance {
+    text-wrap: balance;
+  }
+  
+  .font-tabular {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+@layer components {
+  /* Form elements styling */
+  .dark input:not(:focus) {
+    @apply bg-muted/50 border-border;
+  }
+  
+  .dark textarea:not(:focus) {
+    @apply bg-muted/50 border-border;
+  }
+  
+  /* Accordion sections */
+  .dark [data-radix-accordion-content] {
+    @apply bg-card/50;
+  }
+  
+  /* Labels */
+  label {
+    @apply text-foreground font-medium;
+  }
+  
+  /* Message styling */
+  .error-message {
+    @apply bg-red-50 border-red-300 text-red-900 dark:bg-red-950/50 dark:border-red-800 dark:text-red-200;
+  }
+  
+  .warning-message {
+    @apply bg-yellow-50 border-yellow-300 text-yellow-900 dark:bg-yellow-950/30 dark:border-yellow-800 dark:text-yellow-200;
+  }
+
+  /* Pattern Textarea Error Styling */
+  .pattern-textarea-container {
+    @apply relative;
+  }
+
+  .pattern-error-line-bg {
+    @apply bg-red-50/70 dark:bg-red-950/40 border-l-2 border-red-400 dark:border-red-600;
+    border-radius: 2px;
+  }
+
+  .pattern-error-indicator {
+    @apply text-red-600 dark:text-red-400 cursor-help;
+    width: 18px;
+    height: 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: hsl(var(--background));
+    border-radius: 50%;
+    border: 1px solid hsl(var(--destructive));
+    font-size: 12px;
+    line-height: 1;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
+    font-weight: bold;
+  }
+
+  .pattern-error-indicator:hover {
+    @apply bg-red-50 dark:bg-red-950/50 border-red-500 dark:border-red-500 scale-110;
+    transition: all 0.15s ease-out;
+  }
+
+  .pattern-error-message {
+    @apply z-30 pointer-events-none;
+  }
+
+  .pattern-error-message-content {
+    @apply bg-red-100 dark:bg-red-950/70 text-red-800 dark:text-red-200 text-xs px-2 py-1 rounded border border-red-300 dark:border-red-700;
+    font-family: ui-sans-serif, system-ui, sans-serif;
+    font-weight: 500;
+    backdrop-filter: blur(2px);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 250px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  }
+
+  .pattern-error-tooltip-content::before {
+    content: '';
+    position: absolute;
+    left: -4px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 0;
+    height: 0;
+    border-style: solid;
+    border-width: 4px 4px 4px 0;
+    border-color: transparent theme('colors.red.700') transparent transparent;
+  }
+
+  .dark .pattern-error-tooltip-content::before {
+    border-color: transparent theme('colors.red.800') transparent transparent;
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(-2px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+}

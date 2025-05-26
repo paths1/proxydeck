@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="dark light">
+  <title>ProxyDeck Options</title>
+  <!-- Favicon with theme detection -->
+  <link rel="icon" href="icons/icon128-light.png" media="(prefers-color-scheme: light)">
+  <link rel="icon" href="icons/icon128-dark.png" media="(prefers-color-scheme: dark)">
+  <link rel="icon" href="icons/icon128-light.png">
+  <!-- Add Mozilla's WebExtension Polyfill -->
+  <script src="node_modules/webextension-polyfill/dist/browser-polyfill.min.js"></script>
+  <!-- Theme detection script -->
+  <script src="theme-detector.js"></script>
+  <!-- Add the compiled CSS -->
+  <link rel="stylesheet" href="shared-components.css">
+</head>
+<body>
+  <div id="options-root"></div>
+  <!-- Load vendor chunks first, then main script -->
+  <script src="vendor-react.js"></script>
+  <script src="vendor-ui.js"></script>
+  <script src="vendor-dnd.js"></script>
+  <script src="vendor-common.js"></script>
+  <script src="shared-components.js"></script>
+  <script src="options.js"></script>
+  <!-- Lazy-loaded chunks are NOT included here - they load on-demand:
+       - routing-configurator.js
+       - regex-routing-form.js
+       - container-routing-form.js
+       - traffic-dashboard.js
+  -->
+</body>
+</html>

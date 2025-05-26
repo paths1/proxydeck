@@ -1,0 +1,18 @@
+{
+  "manifest_version": 3,
+  "name": "ProxyDeck",
+  "version": "1.5.0",
+  "permissions": [
+    "webRequest",
+    "proxy",
+    "storage",
+    "tabs",
+    "alarms"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; style-src 'self' 'unsafe-inline'; object-src 'self';"
+  }
+}

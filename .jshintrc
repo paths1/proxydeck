@@ -1,0 +1,23 @@
+{
+  "esversion": 9,
+  "browser": true,
+  "globalstrict": false,
+  "mocha": true,
+  "undef": true,
+  "unused": true,
+  "latedef": "nofunc",
+  "curly": false,
+  "globals": {
+    "browser": true,
+    "chrome": true,
+    "console": true,
+    "module": true,
+    "exports": true,
+    "require": true,
+    "process": true,
+    "__dirname": true,
+    "Buffer": true,
+    "browser_polyfill_default": true,
+    "confirm": true
+  }
+}

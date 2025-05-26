@@ -1,0 +1,6 @@
+export {
+  DEFAULT_SINGLE_PROXY_CONFIG,
+  DEFAULT_MULTI_PROXY_CONFIG,
+  TRAFFIC_WINDOWS,
+  PROXY_COLORS
+} from '../common/constants.js';
