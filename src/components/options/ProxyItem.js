@@ -7,7 +7,6 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from '@/components/ui/accordion';
-import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 // Replaced Lucide with inline SVG for smaller bundle
 const GripVertical = ({ className, ...props }) => (

@@ -3,7 +3,8 @@
     "browser": true,
     "es2021": true,
     "webextensions": true,
-    "jest": true
+    "jest": true,
+    "node": true
   },
   "extends": [
     "eslint:recommended",
@@ -27,5 +28,26 @@
     "react": {
       "version": "detect"
     }
-  }
+  },
+  "globals": {
+    "global": "writable"
+  },
+  "overrides": [
+    {
+      "files": ["**/__tests__/**/*", "**/__mocks__/**/*", "*.test.js", "*.spec.js"],
+      "env": {
+        "jest": true,
+        "node": true
+      },
+      "globals": {
+        "global": "writable",
+        "process": "readonly",
+        "module": "writable",
+        "exports": "writable"
+      },
+      "rules": {
+        "no-import-assign": "off"
+      }
+    }
+  ]
 }

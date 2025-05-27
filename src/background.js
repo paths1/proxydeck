@@ -1,6 +1,5 @@
 import * as browser from 'webextension-polyfill';
 import browserCapabilities from './utils/feature-detection.js';
-import { ErrorTypes, ErrorSeverity } from './utils/error-helpers.js';
 
 import TabManager from './modules/TabManager.js';
 import ProxyManager from './modules/ProxyManager.js';
@@ -60,20 +59,7 @@ const proxyManager = new ProxyManager({
     console.error("[Proxy] Error:", error);
     
     if (!error || !error.type || !error.severity) {
-      const errorMessage = typeof error === 'string' ? error : 
-        (error.message || JSON.stringify(error));
-        
-      let errorType = ErrorTypes.INTERNAL;
-      let errorSeverity = ErrorSeverity.ERROR;
-      
-      if (errorMessage.includes('connection') || errorMessage.includes('network')) {
-        errorType = ErrorTypes.NETWORK;
-      } else if (errorMessage.includes('proxy') || errorMessage.includes('configuration')) {
-        errorType = ErrorTypes.PROXY_CONFIG;
-      } else if (errorMessage.includes('permission')) {
-        errorType = ErrorTypes.PERMISSION;
-        errorSeverity = ErrorSeverity.CRITICAL;
-      }
+      // Error classification logic could be added here if needed
     }
   },
   trafficMonitor: trafficMonitor
@@ -232,7 +218,7 @@ const messageHandlers = {
         message.windowSize || '1min'));
   },
 
-  [MESSAGE_ACTIONS.GET_TRAFFIC_SOURCES]: async (message) => {
+  [MESSAGE_ACTIONS.GET_TRAFFIC_SOURCES]: async (_message) => {
     const { config = { proxies: [] } } = await browser.storage.local.get('config');
     return Promise.resolve(trafficMonitor.getAllTrafficSources(config.proxies || []));
   },
@@ -258,7 +244,7 @@ const messageHandlers = {
     return Promise.resolve({ success: true });
   },
 
-  [MESSAGE_ACTIONS.GET_PROXY_FOR_TAB]: (message, sender, sendResponse) => {
+  [MESSAGE_ACTIONS.GET_PROXY_FOR_TAB]: (message, _sender, sendResponse) => {
     const { tabId, url } = message;
 
     if (!url) {

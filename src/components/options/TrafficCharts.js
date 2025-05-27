@@ -6,10 +6,8 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip,
-  Legend,
   ResponsiveContainer,
-  ReferenceLine,
-  Brush
+  ReferenceLine
 } from 'recharts';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Badge } from '../../components/ui/badge';
@@ -36,7 +34,7 @@ const TrafficCharts = ({
   data = [], 
   proxies = [], 
   hasPerProxyData = false, 
-  windowSize = '1min',
+  windowSize: _windowSize = '1min',
   lastUpdate,
   stats = {}
 }) => {
@@ -112,27 +110,11 @@ const TrafficCharts = ({
     });
   }, []);
 
-  const formatTooltipValue = useCallback((value, name) => {
-    return [formatTraffic(value, 1), name];
-  }, []);
 
   const formatYAxisTick = useCallback((value) => {
     return formatTraffic(value, 0);
   }, []);
 
-  const visibleDataKeys = useMemo(() => {
-    const keys = [config.totalKey];
-    
-    if (hasPerProxyData && proxies.length > 0) {
-      // Remove total key for per-proxy view and add proxy keys
-      keys.splice(0, 1);
-      proxies.forEach(proxy => {
-        keys.push(`${type}_${proxy.id}`);
-      });
-    }
-    
-    return keys;
-  }, [config.totalKey, hasPerProxyData, proxies, type]);
 
   const updateChartData = useCallback(() => {
     if (!data || data.length === 0) {

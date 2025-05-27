@@ -46,14 +46,14 @@ export class OptionsPageConfigManager {
         this.currentConfig.proxies.forEach(proxy => {
           // Colors are now managed by ProxyManager in the background
           
-          if (proxy.hasOwnProperty('username') || proxy.hasOwnProperty('password')) {
+          if (Object.prototype.hasOwnProperty.call(proxy, 'username') || Object.prototype.hasOwnProperty.call(proxy, 'password')) {
             proxy.auth = {
               username: proxy.username || '',
               password: proxy.password || ''
             };
             delete proxy.username;
             delete proxy.password;
-          } else if (!proxy.hasOwnProperty('auth')) {
+          } else if (!Object.prototype.hasOwnProperty.call(proxy, 'auth')) {
             // Ensure auth object exists even if username/password were never defined
             proxy.auth = { username: '', password: '' };
           }

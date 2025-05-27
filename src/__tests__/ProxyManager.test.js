@@ -2,9 +2,6 @@
 import * as browser from 'webextension-polyfill';
 import ProxyManager from '../modules/ProxyManager';
 import browserCapabilities from '../utils/feature-detection';
-import * as proxyHelpers from '../utils/proxy-helpers';
-import * as firefoxProxyHandler from '../utils/firefox-proxy-handler';
-import * as errorHelpers from '../utils/error-helpers';
 
 // Mock imported modules
 jest.mock('../utils/feature-detection', () => ({

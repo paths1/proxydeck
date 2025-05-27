@@ -3,7 +3,8 @@ import browser from 'webextension-polyfill';
 import { MESSAGE_ACTIONS } from '../../common/constants';
 import TrafficCharts from './TrafficCharts';
 import TimeWindowSelector from './TimeWindowSelector';
-import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
+import { Card, CardContent } from '../../components/ui/card';
+import { TooltipProvider, Tooltip, TooltipTrigger, TooltipContent } from '../../components/ui/tooltip';
 import browserCapabilities from '../../utils/feature-detection';
 
 const TrafficDashboard = () => {
@@ -204,7 +205,6 @@ const TrafficDashboard = () => {
             lastUpdate: Date.now()
           });
         }
-      } else {
       }
     } catch (error) {
       console.error('[TrafficDashboard] Error in mergeTrafficUpdate:', error);
@@ -321,14 +321,34 @@ const TrafficDashboard = () => {
   }
   
   return (
-    <div>
-      <div className="flex justify-between items-center mb-4">
-        <h2 className="text-xl font-semibold flex items-center gap-2">
-          Traffic Monitor
-          {browserCapabilities.browser.isChrome && (
-            <span className="text-xs text-muted-foreground/70 font-normal">(estimated)</span>
-          )}
-        </h2>
+    <TooltipProvider delayDuration={300} skipDelayDuration={100}>
+      <div>
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-xl font-semibold flex items-center gap-2">
+            Traffic Monitor
+            {browserCapabilities.browser.isChrome && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="text-xs text-muted-foreground/70 font-normal cursor-help border-b border-dashed border-muted-foreground/30 hover:border-muted-foreground/60 transition-colors">
+                    (estimated)
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" className="max-w-sm">
+                  <div className="space-y-3">
+                    <div className="flex items-start gap-2">
+                      <span className="text-amber-400 text-sm">⚠️</span>
+                      <div>
+                        <div className="font-medium">Numbers may be lower than actual usage</div>
+                        <div className="text-xs text-muted-foreground mt-1">
+                          Chrome extensions cannot access actual response sizes for many sites (especially YouTube, Netflix, and streaming services) because they rely on Content-Length headers which are often missing or inaccurate on sites with compressed content.
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </TooltipContent>
+              </Tooltip>
+            )}
+          </h2>
         <TimeWindowSelector
           selected={selectedWindow}
           onChange={handleWindowChange}
@@ -359,7 +379,8 @@ const TrafficDashboard = () => {
           stats={trafficData.stats}
         />
       </div>
-    </div>
+      </div>
+    </TooltipProvider>
   );
 };
 

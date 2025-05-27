@@ -61,7 +61,6 @@ export class ProxyTrafficTracker {
     const now = Date.now();
     const cutoff = now - this.retentionTimeMs;
     
-    let deletedCount = 0;
     const iterator = this.requestProxyMap.entries();
     
     // Process in batches to avoid blocking
@@ -72,7 +71,7 @@ export class ProxyTrafficTracker {
       const [requestId, entry] = next.value;
       if (entry.timestamp < cutoff) {
         this.requestProxyMap.delete(requestId);
-        deletedCount++;
+        // Entry deleted
       }
     }
     

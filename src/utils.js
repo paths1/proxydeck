@@ -4,8 +4,6 @@
  * This module provides common utility functions for the extension.
  */
 
-// Debug flag for verbose logging
-const DEBUG = false; // Set to true for development troubleshooting
 
 // Import defaultPatternMatcher for validation purposes only
 import { defaultPatternMatcher } from './modules/PatternMatcher.js';

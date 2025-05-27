@@ -1,5 +1,4 @@
 // feature-detection.test.js
-import * as browser from 'webextension-polyfill';
 import { hasFeature } from '../../utils/feature-detection';
 
 // Mock detectCapabilities function
@@ -78,11 +77,10 @@ describe('Feature Detection', () => {
   });
 
   describe('Browser capabilities detection', () => {
-    let originalModule;
     let originalBrowser;
     
     beforeEach(() => {
-      // Save original module and browser
+      // Save original browser
       jest.resetModules();
       originalBrowser = global.browser;
     });
@@ -105,7 +103,7 @@ describe('Feature Detection', () => {
       };
       
       // Re-import to get new detection
-      const detectCapabilities = jest.requireActual('../../utils/feature-detection').default;
+      jest.requireActual('../../utils/feature-detection').default;
       
       // Set our expectations based on direct testing of the functionality
       // rather than importing a potentially cached module

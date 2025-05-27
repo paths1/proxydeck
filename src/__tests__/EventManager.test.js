@@ -1,7 +1,6 @@
 // EventManager.test.js
 import * as browser from 'webextension-polyfill';
 import { eventManager } from '../modules/EventManager';
-import browserCapabilities from '../utils/feature-detection';
 
 // Mock the browser API and feature detection
 jest.mock('../utils/feature-detection', () => ({
@@ -87,18 +86,18 @@ describe('EventManager', () => {
     });
     
     it('should handle missing webRequest API gracefully', () => {
-      // Temporarily remove webRequest API
-      const originalWebRequest = browser.webRequest;
-      delete browser.webRequest;
+      // Mock browser without webRequest API
+      const mockBrowser = { ...browser };
+      delete mockBrowser.webRequest;
+      
+      // Mock the browser import for this test
+      jest.doMock('webextension-polyfill', () => mockBrowser);
       
       eventManager.initWebRequestListeners();
       
       // When webRequest is not available, we expect some kind of logging to happen,
       // but the specific message may have changed
       expect(true).toBe(true);
-      
-      // Restore webRequest API
-      browser.webRequest = originalWebRequest;
     });
   });
 
@@ -442,15 +441,14 @@ describe('EventManager', () => {
         }
       };
       
-      // Save the original and replace it with our mock
-      const originalWebRequest = browser.webRequest;
-      browser.webRequest = mockWebRequest;
+      // Mock browser webRequest for this test
+      jest.doMock('webextension-polyfill', () => ({
+        ...browser,
+        webRequest: mockWebRequest
+      }));
       
       // Run the cleanup
       eventManager.cleanupAllListeners();
-      
-      // Restore the original
-      browser.webRequest = originalWebRequest;
     });
     
     it('should handle errors when removing event listeners', () => {

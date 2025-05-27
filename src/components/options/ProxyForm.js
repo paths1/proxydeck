@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, Suspense, useRef } from 'react';
+import React, { useState, useEffect, Suspense, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { InputWithBadge } from '@/components/ui/input-with-badge';
 import { ValidatedInputWithBadge } from '@/components/ui/validated-input-with-badge';
@@ -364,10 +364,6 @@ const ProxyForm = ({ proxy: initialProxyData, onSave, onUndo, onDelete, existing
     if (onUndo) {
       onUndo();
     }
-  };
-
-  const handleDelete = () => {
-    // onDelete(proxy.id); // This is typically handled by ProxyItem/ProxiesSection
   };
 
 

@@ -174,6 +174,9 @@ describe('TrafficMonitor LRU Cache Implementation', () => {
     it('should remove alarm listener when stopping monitoring', () => {
       const { addEventListener, removeEventListener } = require('../../modules/EventManager.js');
       
+      // Configure traffic monitor to use alarms (sampleIntervalMs >= 60000)
+      trafficMonitor.config.sampleIntervalMs = 60000;
+      
       // Start monitoring to set up listeners
       trafficMonitor.startMonitoring({}, []);
       

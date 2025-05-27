@@ -1,16 +1,12 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import * as browser from 'webextension-polyfill';
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { MESSAGE_ACTIONS } from '../../common/constants';
 import { formatTraffic } from '../../utils';
 import ProxyPopupItem from '../../components/popup/ProxyPopupItem';
-import browserCapabilities from '../../utils/feature-detection';
 import { DownloadIcon, UploadIcon } from '../../components/shared/icons';
 import { useThemeIcon } from '../../hooks/useThemeIcon';
 
-// Detect if we're running in Firefox
-const isFirefox = browserCapabilities.proxy.hasProxyRequestListener;
 
 /**
  * Main application component for the extension's popup.
@@ -27,7 +23,6 @@ const PopupApp = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [currentUrl, setCurrentUrl] = useState('');
-  const [tabId, setTabId] = useState(null);
 
   // Hook to update extension icon based on theme
   useThemeIcon();
@@ -105,7 +100,6 @@ const PopupApp = () => {
         const currentTabs = await browser.tabs.query({ active: true, currentWindow: true });
         const tab = currentTabs[0];
         if (tab?.id && tab?.url) {
-          setTabId(tab.id);
           setCurrentUrl(tab.url);
         
           // Get both active proxy and matching proxies for this tab in one request

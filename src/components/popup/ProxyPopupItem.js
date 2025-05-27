@@ -1,6 +1,6 @@
 import React from 'react';
 import { Switch } from "@/components/ui/switch";
-import { Badge, DotBadge } from "@/components/ui/badge";
+import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { DownloadIcon, UploadIcon } from '../../components/shared/icons';
 import { useProxyToggle } from '../../hooks/useProxyToggle';
@@ -31,8 +31,6 @@ const ProxyPopupItem = ({
 
   // Determine visual styling based on proxy status
   const getStyles = () => {
-    // Always use the proxy's priority color for the border
-    let borderColor = priorityColor;
     
     // If proxy is active, use bold border width and subtle background
     if (isActive) {

@@ -45,10 +45,6 @@ const ProxiesSection = () => {
   const configManagerRef = useRef(null); // Use ref to hold the instance
   const newProxyIdRef = useRef(null); // Track newly created proxy
   
-  // Use stored colors from proxy objects
-  const getPriorityColor = useCallback((proxy) => {
-    return proxy.color || 'hsl(210, 100%, 50%)'; // fallback to blue if color is missing
-  }, []);
   
   // Common proxy refresh function
   const refreshProxies = useCallback(() => {
@@ -326,7 +322,7 @@ const ProxiesSection = () => {
 
   const renderProxyItems = () => {
     if (!proxies || proxies.length === 0) {
-      return <p className="text-sm text-muted-foreground mt-4">No proxies configured. Click "Add Proxy" to get started.</p>;
+      return <p className="text-sm text-muted-foreground mt-4">No proxies configured. Click &quot;Add Proxy&quot; to get started.</p>;
     }
     return proxies.map((proxy) => (
       <ProxyItem

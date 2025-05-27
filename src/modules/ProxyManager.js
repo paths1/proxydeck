@@ -2,7 +2,7 @@ import * as browser from 'webextension-polyfill';
 import browserCapabilities from '../utils/feature-detection.js';
 import { setupProxyRequestListener, applyProxySettings, disableProxy as disableProxyHelpers } from '../utils/proxy-helpers.js';
 import { initializeProxyHandler, cleanupProxyHandler } from '../utils/firefox-proxy-handler.js';
-import { handleError, ErrorTypes, ErrorSeverity, withErrorHandling } from '../utils/error-helpers.js';
+import { handleError, ErrorTypes, ErrorSeverity } from '../utils/error-helpers.js';
 import { createPriorityColorMap } from '../utils/priority-color.js';
 
 /**
@@ -608,7 +608,7 @@ class ProxyManager {
           await browser.proxy.settings.clear({});
         }
       } catch (error) {
-        const errorObj = handleError(
+        handleError(
           "Failed to disable request-level proxy",
           ErrorTypes.BROWSER_API,
           ErrorSeverity.ERROR,
@@ -622,7 +622,7 @@ class ProxyManager {
       try {
         await disableProxyHelpers();
       } catch (error) {
-        const errorObj = handleError(
+        handleError(
           "Failed to disable PAC script proxy",
           ErrorTypes.BROWSER_API,
           ErrorSeverity.ERROR,
