@@ -768,52 +768,125 @@ describe('ProxyManager', () => {
       await proxyManager.loadConfig();
     });
     
-    it('should generate a PAC script', () => {
+    it('should generate a PAC script with JSON data structure', () => {
+      // Ensure we have enabled proxies with patterns
+      proxyManager.enabledProxies = [
+        {
+          id: 'test_proxy',
+          enabled: true,
+          host: 'proxy.example.com',
+          port: 8080,
+          priority: 1,
+          routingConfig: {
+            useContainerMode: false,
+            patterns: ['example\\.com']
+          }
+        }
+      ];
+      
       const pacScript = proxyManager.generatePacScript();
       
-      // Just verify the basic structure is there
       expect(pacScript).toContain('function FindProxyForURL');
+      expect(pacScript).toContain('var proxyConfigurations = ');
+      expect(pacScript).toContain('function testPatternMatch');
+      expect(pacScript).toContain('function findMatchingProxies');
       expect(typeof pacScript).toBe('string');
       expect(pacScript.length).toBeGreaterThan(50);
     });
     
     it('should handle container-based proxies correctly (skip them)', async () => {
-      // Add a container-based proxy
-      proxyManager.enabledProxies.push({
-        id: 'container_proxy',
-        enabled: true,
-        host: 'container.proxy.com',
-        port: 9090,
-        routingConfig: {
-          useContainerMode: true,
-          containers: ['container1']
+      proxyManager.enabledProxies = [
+        {
+          id: 'container_proxy',
+          enabled: true,
+          host: 'container.proxy.com',
+          port: 9090,
+          routingConfig: {
+            useContainerMode: true,
+            containers: ['container1']
+          }
+        },
+        {
+          id: 'pattern_proxy',
+          enabled: true,
+          host: 'pattern.proxy.com',
+          port: 8080,
+          routingConfig: {
+            useContainerMode: false,
+            patterns: ['pattern\\.com']
+          }
         }
-      });
+      ];
       
       const pacScript = proxyManager.generatePacScript();
       
-      // Should not include the container proxy
       expect(pacScript).not.toContain('container.proxy.com');
+      expect(pacScript).toContain('pattern.proxy.com');
     });
     
-    it('should contain all necessary components for a PAC script', () => {
+    it('should embed proxy configuration as secure JSON data', () => {
+      // Ensure we have enabled proxies with patterns
+      proxyManager.enabledProxies = [
+        {
+          id: 'test_proxy',
+          enabled: true,
+          host: 'proxy.example.com',
+          port: 8080,
+          priority: 1,
+          routingConfig: {
+            useContainerMode: false,
+            patterns: ['example\\.com', 'test\\.org']
+          }
+        }
+      ];
+      
       const pacScript = proxyManager.generatePacScript();
       
-      // Check for some fundamental PAC script components
-      expect(pacScript).toContain('function FindProxyForURL');
+      expect(pacScript).toContain('var proxyConfigurations = ');
       
-      // Don't check for specific implementation details that may change
+      const configMatch = pacScript.match(/var proxyConfigurations = (.+?);/);
+      expect(configMatch).toBeTruthy();
+      
+      const parsedConfig = JSON.parse(configMatch[1]);
+      expect(Array.isArray(parsedConfig)).toBe(true);
+      expect(parsedConfig).toHaveLength(1);
+      
+      expect(parsedConfig[0]).toHaveProperty('patterns');
+      expect(parsedConfig[0]).toHaveProperty('proxyString');
+      expect(parsedConfig[0]).toHaveProperty('priority');
+      expect(parsedConfig[0].patterns).toEqual(['example\\.com', 'test\\.org']);
     });
     
-    it('should generate different PAC scripts based on browser capabilities', () => {
-      // Just verify that the function executes without errors in both modes
-      proxyManager.hasProxyRequestListener = false;
-      const pacScript1 = proxyManager.generatePacScript();
-      expect(typeof pacScript1).toBe('string');
+    it('should generate valid JavaScript that can be parsed', () => {
+      // Ensure we have enabled proxies with patterns
+      proxyManager.enabledProxies = [
+        {
+          id: 'test_proxy',
+          enabled: true,
+          host: 'proxy.example.com',
+          port: 8080,
+          priority: 1,
+          routingConfig: {
+            useContainerMode: false,
+            patterns: ['example\\.com']
+          }
+        }
+      ];
       
-      proxyManager.hasProxyRequestListener = true;
-      const pacScript2 = proxyManager.generatePacScript();
-      expect(typeof pacScript2).toBe('string');
+      const pacScript = proxyManager.generatePacScript();
+      
+      expect(() => {
+        new Function(pacScript + '; return FindProxyForURL;')();
+      }).not.toThrow();
+    });
+    
+    it('should return DIRECT script when no enabled proxies', () => {
+      proxyManager.enabledProxies = [];
+      
+      const pacScript = proxyManager.generatePacScript();
+      
+      expect(pacScript).toContain('return "DIRECT"');
+      expect(pacScript).not.toContain('var proxyConfigurations = ');
     });
   });
 

@@ -65,8 +65,8 @@ class TrafficMonitor {
     this.config = {
       maxHistoryPoints: 60,
       maxQueueSize: 1000,
-      maxBatchSize: 50,
-      processingIntervalMs: 50,
+      maxBatchSize: 100,
+      processingIntervalMs: 25,
       sampleIntervalMs: 1000,
       aggregationIntervals: {
         '5min': 5,

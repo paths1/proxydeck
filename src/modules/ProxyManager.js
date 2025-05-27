@@ -447,7 +447,6 @@ class ProxyManager {
   
   
   generatePacScript() {
-    // Add defensive check
     if (!this.enabledProxies || !Array.isArray(this.enabledProxies) || this.enabledProxies.length === 0) {
       this.pacScript = `
         function FindProxyForURL(url, host) {
@@ -457,76 +456,79 @@ class ProxyManager {
       return this.pacScript;
     }
     
-    let patternFunctions = "";
-    let proxyFunctions = "";
-    
-    let patternCounter = 0;
-    this.enabledProxies.forEach((proxy, proxyIndex) => {
-      const patterns = proxy.routingConfig.patterns || [];
-      
-      if (proxy.routingConfig.useContainerMode) {
-        return;
-      }
-      
-      patterns.forEach((pattern) => {
-        patternFunctions += `
-        function matchesPattern${patternCounter}(host, originalHost) {
-          try {
-            const regex = new RegExp("${pattern.value ? pattern.value.replace(/\\/g, "\\\\") : pattern.replace(/\\/g, "\\\\")}");
-            // Test both original hostname and resolved IP (if available)
-            return regex.test(originalHost) || (host && host !== originalHost && regex.test(host));
-          } catch (e) {
-            console.error("Invalid regex pattern:", "${pattern.value ? pattern.value.replace(/\\/g, "\\\\") : pattern.replace(/\\/g, "\\\\")}");
-            return false;
-          }
-        }
-        `;
-        
+    const proxyConfigurations = this.enabledProxies
+      .filter(proxy => !proxy.routingConfig?.useContainerMode)
+      .map(proxy => {
+        const patterns = proxy.routingConfig?.patterns || [];
         let authString = "";
+        
         if (proxy.username && proxy.password && !browserCapabilities.proxy.hasProxyRequestListener) {
           authString = `${proxy.username}:${proxy.password}@`;
         }
         
         const proxyTypeString = (proxy.proxyType || 'socks5').toUpperCase();
-        proxyFunctions += `
-        if (matchesPattern${patternCounter}(ipToCheck || host, host)) {
-          matchedProxies.push({
-            proxy: "${proxyTypeString} ${authString}${proxy.host}:${proxy.port}",
-            priority: ${proxy.priority}
-          });
-        }
-        `;
         
-        patternCounter++;
-      });
-    });
+        return {
+          patterns: patterns.map(p => p.value || p),
+          proxyString: `${proxyTypeString} ${authString}${proxy.host}:${proxy.port}`,
+          priority: proxy.priority
+        };
+      })
+      .filter(config => config.patterns.length > 0);
+    
+    const configData = JSON.stringify(proxyConfigurations);
     
     this.pacScript = `
-      ${patternFunctions}
+      var proxyConfigurations = ${configData};
       
-      function FindProxyForURL(url, host) {
-        // Track matching proxies
+      function testPatternMatch(hostname, pattern) {
+        try {
+          var regex = new RegExp(pattern, "i");
+          return regex.test(hostname);
+        } catch (e) {
+          console.error("Invalid regex pattern:", pattern);
+          return false;
+        }
+      }
+      
+      function findMatchingProxies(hostname, ipAddress) {
         var matchedProxies = [];
         
-        // Extract IP address if host is an IP or resolve hostname to IP
+        for (var i = 0; i < proxyConfigurations.length; i++) {
+          var config = proxyConfigurations[i];
+          var patterns = config.patterns;
+          
+          for (var j = 0; j < patterns.length; j++) {
+            var pattern = patterns[j];
+            
+            if (testPatternMatch(hostname, pattern) || 
+                (ipAddress && ipAddress !== hostname && testPatternMatch(ipAddress, pattern))) {
+              matchedProxies.push({
+                proxy: config.proxyString,
+                priority: config.priority
+              });
+              break;
+            }
+          }
+        }
+        
+        return matchedProxies;
+      }
+      
+      function FindProxyForURL(url, host) {
         var isIp = /^(\\d{1,3}\\.){3}\\d{1,3}$/.test(host);
         var ipToCheck = isIp ? host : dnsResolve(host);
         
-        // Check all proxy patterns
-        ${proxyFunctions}
+        var matchedProxies = findMatchingProxies(host, ipToCheck);
         
-        // If we have matches, use the highest priority proxy (lowest priority number)
         if (matchedProxies.length > 0) {
-          // Sort by priority (lower number = higher priority)
           matchedProxies.sort(function(a, b) {
             return a.priority - b.priority;
           });
           
-          // Return the highest priority proxy
           return matchedProxies[0].proxy;
         }
         
-        // Default to direct connection if no proxy patterns match
         return "DIRECT";
       }
     `;
