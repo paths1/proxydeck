@@ -1,6 +1,6 @@
 {
   "name": "proxydeck",
-  "version": "1.5.0",
+  "version": "1.5.1",
   "description": "A cross-browser extension that provides a streamlined, one-click solution for managing proxy connections.",
   "main": "babel.config.js",
   "scripts": {
@@ -70,6 +70,7 @@
     "@radix-ui/react-tabs": "^1.1.11",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "lru-cache": "^11.1.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "recharts": "^2.15.3",

@@ -50,16 +50,36 @@ class TabManager {
       }
     };
     
-    browser.runtime.onMessage.addListener(this.boundHandleConfigUpdate);
+    eventManager.addEventListener(
+      'message',
+      'tab_manager_config_update',
+      browser.runtime,
+      'onMessage',
+      this.boundHandleConfigUpdate
+    );
   }
   
   handleConfigurationUpdate() {
-    this.refreshAllTabBadges();
+    // Clear any pending tab updates to prevent stale updates
+    this.tabUpdateQueue.clear();
+    this.pendingTabUpdates = false;
+    
+    // Clear the process tab updates alarm
+    browser.alarms.clear(this.ALARM_PROCESS_TAB_UPDATES);
+    
+    // Clear the tab proxy map before refreshing
+    this.tabProxyMap.clear();
+    
+    // Refresh all tab badges with error handling
+    this.refreshAllTabBadges().catch(error => {
+      console.error('[TabManager] Error refreshing badges after config update:', error);
+    });
   }
   
   setupTabEventListeners() {
     this.boundHandleTabActivated = this.handleTabActivated.bind(this);
     this.boundHandleTabUpdated = this.handleTabUpdated.bind(this);
+    this.boundHandleTabRemoved = this.handleTabRemoved.bind(this);
     
     eventManager.addEventListener(
       'tab',
@@ -75,6 +95,14 @@ class TabManager {
       browser.tabs,
       'onUpdated',
       this.boundHandleTabUpdated
+    );
+    
+    eventManager.addEventListener(
+      'tab',
+      'tab_removed',
+      browser.tabs,
+      'onRemoved',
+      this.boundHandleTabRemoved
     );
   }
   
@@ -100,6 +128,18 @@ class TabManager {
         this.currentTabUrl = urlToCheck;
       }
       this.queueTabUpdate(tabId, urlToCheck, tabId === this.currentTabId);
+    }
+  }
+  
+  handleTabRemoved(tabId) {
+    // Clean up data for the removed tab
+    this.tabProxyMap.delete(tabId);
+    this.tabUpdateQueue.delete(tabId);
+    
+    // If this was the current tab, clear current tab info
+    if (tabId === this.currentTabId) {
+      this.currentTabId = null;
+      this.currentTabUrl = null;
     }
   }
   
@@ -274,12 +314,11 @@ class TabManager {
     // Remove event listeners through the event manager
     eventManager.removeEventListener('tab', 'tab_activated');
     eventManager.removeEventListener('tab', 'tab_updated');
+    eventManager.removeEventListener('tab', 'tab_removed');
     eventManager.removeEventListener('alarm', 'tab_manager_alarms');
     
     // Remove configuration listener
-    if (this.boundHandleConfigUpdate) {
-      browser.runtime.onMessage.removeListener(this.boundHandleConfigUpdate);
-    }
+    eventManager.removeEventListener('message', 'tab_manager_config_update');
     
     // Clear alarms
     this.stopPeriodicTabChecking();

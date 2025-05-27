@@ -1,4 +1,5 @@
 import * as browser from 'webextension-polyfill';
+import { LRUCache } from 'lru-cache';
 import { MESSAGE_ACTIONS, SPECIAL_TRAFFIC_COLORS } from '../common/constants.js';
 import browserCapabilities from '../utils/feature-detection.js';
 import eventManager from './EventManager.js';
@@ -7,8 +8,7 @@ import {
   createEmptyTrafficData,
   createEmptyDataPoint,
   addProxyDataToPoint,
-  getProxyIdsFromDataPoint,
-  convertFromChartJsFormat
+  getProxyIdsFromDataPoint
 } from '../types/traffic-data.js';
 
 /**
@@ -47,18 +47,26 @@ class TrafficMonitor {
     this.isProcessing = false;
     this.processingInterval = null;
     
-    // Proxy lookup optimization
-    this.proxyLookupCache = new Map();
-    this.proxyInfoCache = new Map(); // Separate cache for proxyInfo lookups
-    this.cacheTTL = 60000; // 1 minute cache
-    this.cacheCleaning = false;
+    // Proxy lookup optimization with LRU caches
+    this.proxyLookupCache = new LRUCache({
+      max: 500,
+      ttl: 60000, // 1 minute TTL
+      updateAgeOnGet: true,
+      updateAgeOnHas: true
+    });
+    this.proxyInfoCache = new LRUCache({
+      max: 500,
+      ttl: 60000, // 1 minute TTL
+      updateAgeOnGet: true,
+      updateAgeOnHas: true
+    });
     
     // Configuration
     this.config = {
       maxHistoryPoints: 60,
       maxQueueSize: 1000,
       maxBatchSize: 50,
-      processingIntervalMs: 10,
+      processingIntervalMs: 50,
       sampleIntervalMs: 1000,
       aggregationIntervals: {
         '5min': 5,
@@ -71,7 +79,7 @@ class TrafficMonitor {
     this.boundTrackUpload = this.trackUploadTraffic.bind(this);
     this.boundSampleData = this.sampleData.bind(this);
     
-    this.setupAlarmListener();
+    // setupAlarmListener() is now called conditionally in startMonitoring()
   }
   
   initializeDataStructure() {
@@ -114,10 +122,16 @@ class TrafficMonitor {
   }
   
   startMonitoring(config, enabledProxies) {
+    // Stop any existing monitoring first to prevent multiple intervals
+    this.stopMonitoring();
+    
     this.enabledProxies = enabledProxies;
     this.currentSample = this.createEmptySample();
     this.proxyLookupCache.clear();
     this.proxyInfoCache.clear();
+    
+    // Clear request queue to prevent processing stale requests
+    this.requestQueue = [];
     
     // Initialize data structures for enabled proxies
     this.initializeProxyData(enabledProxies);
@@ -128,17 +142,31 @@ class TrafficMonitor {
     // Start continuous processing
     this.startContinuousProcessing();
     
-    // Start sampling alarm
-    browser.alarms.create(this.alarmName, { 
-      periodInMinutes: this.config.sampleIntervalMs / 60000 
-    });
+    // Start sampling interval (use setInterval for sub-minute intervals)
+    if (this.config.sampleIntervalMs < 60000) {
+      // Use setInterval for intervals less than 1 minute
+      this.sampleInterval = setInterval(this.boundSampleData, this.config.sampleIntervalMs);
+    } else {
+      // Use alarm for intervals 1 minute or longer
+      // Set up alarm listener only for long intervals
+      this.setupAlarmListener();
+      browser.alarms.create(this.alarmName, { 
+        periodInMinutes: this.config.sampleIntervalMs / 60000 
+      });
+    }
   }
   
   stopMonitoring() {
     eventManager.removeWebRequestListener('onCompleted', 'download_traffic_monitor');
     eventManager.removeWebRequestListener('onBeforeRequest', 'upload_traffic_monitor');
+    eventManager.removeEventListener('alarm', 'traffic_sampling');
     
+    // Clear both alarms and intervals
     browser.alarms.clear(this.alarmName);
+    if (this.sampleInterval) {
+      clearInterval(this.sampleInterval);
+      this.sampleInterval = null;
+    }
     
     // Stop continuous processing
     this.stopContinuousProcessing();
@@ -153,6 +181,61 @@ class TrafficMonitor {
     
     this.requestQueue = [];
     this.proxyLookupCache.clear();
+  }
+
+  handleConfigurationUpdate(newConfig, enabledProxies) {
+    // Stop current monitoring
+    this.stopMonitoring();
+    
+    // Clear request queue immediately to prevent processing stale requests
+    this.requestQueue = [];
+    
+    // Determine which proxies were removed
+    const oldProxyIds = new Set(this.enabledProxies?.map(p => p.id) || []);
+    const newProxyIds = new Set(enabledProxies.map(p => p.id));
+    const removedProxyIds = [...oldProxyIds].filter(id => !newProxyIds.has(id));
+    
+    // Clear traffic data for removed proxies only
+    if (removedProxyIds.length > 0) {
+      this.clearTrafficDataForProxies(removedProxyIds);
+    }
+    
+    // Restart monitoring with new configuration
+    this.startMonitoring(newConfig, enabledProxies);
+  }
+
+  clearTrafficDataForProxies(proxyIds) {
+    if (!proxyIds || proxyIds.length === 0) return;
+    
+    for (const windowSize in this.trafficData) {
+      const windowData = this.trafficData[windowSize];
+      
+      // Remove proxy-specific fields from all data points
+      windowData.data.forEach(point => {
+        proxyIds.forEach(proxyId => {
+          delete point[`download_${proxyId}`];
+          delete point[`upload_${proxyId}`];
+        });
+      });
+      
+      // Remove proxy stats
+      proxyIds.forEach(proxyId => {
+        delete windowData.stats.perProxy[proxyId];
+      });
+      
+      // Reset last processed tracking for affected data
+      if (this.pointLastProcessed[windowSize]) {
+        this.pointLastProcessed[windowSize] = {};
+      }
+    }
+    
+    // Clear proxy-specific data from current sample
+    if (this.currentSample) {
+      proxyIds.forEach(proxyId => {
+        this.currentSample.proxyDownload.delete(proxyId);
+        this.currentSample.proxyUpload.delete(proxyId);
+      });
+    }
   }
   
   initializeProxyData(proxies) {
@@ -202,24 +285,7 @@ class TrafficMonitor {
   
   startContinuousProcessing() {
     this.processingInterval = setInterval(() => {
-      // Process the current batch
       this.processRequestBatch();
-      
-      // Adaptively adjust interval based on queue size
-      const nextIntervalMs = this.requestQueue.length > 100 ? 5 : 
-                           this.requestQueue.length > 50 ? 10 : 
-                           this.requestQueue.length > 10 ? 20 : 50;
-                          
-      // Only change the interval if it needs to be adjusted
-      if (this.config.processingIntervalMs !== nextIntervalMs) {
-        this.config.processingIntervalMs = nextIntervalMs;
-        
-        // Reset the timer with the new interval
-        clearInterval(this.processingInterval);
-        this.processingInterval = setInterval(() => {
-          this.processRequestBatch();
-        }, this.config.processingIntervalMs);
-      }
     }, this.config.processingIntervalMs);
   }
   
@@ -366,8 +432,8 @@ class TrafficMonitor {
     
     // Check cache first
     const cached = this.proxyInfoCache.get(cacheKey);
-    if (cached && Date.now() - cached.timestamp < this.cacheTTL) {
-      return cached.resolution;
+    if (cached) {
+      return cached;
     }
     
     // Find matching configured proxies
@@ -396,10 +462,7 @@ class TrafficMonitor {
     }
     
     // Cache the result
-    this.proxyInfoCache.set(cacheKey, {
-      resolution,
-      timestamp: Date.now()
-    });
+    this.proxyInfoCache.set(cacheKey, resolution);
     
     return resolution;
   }
@@ -411,8 +474,8 @@ class TrafficMonitor {
     // Check cache first (only if not filtering candidates)
     if (!candidateProxies) {
       const cached = this.proxyLookupCache.get(cacheKey);
-      if (cached && Date.now() - cached.timestamp < this.cacheTTL) {
-        return cached.proxyId;
+      if (cached !== undefined) {
+        return cached;
       }
     }
     
@@ -466,39 +529,8 @@ class TrafficMonitor {
   }
   
   cacheProxyLookup(key, proxyId) {
-    this.proxyLookupCache.set(key, {
-      proxyId,
-      timestamp: Date.now()
-    });
-    
-    // Cleanup old cache entries periodically
-    if (this.proxyLookupCache.size > 1000 && !this.cacheCleaning) {
-      this.cacheCleaning = true;
-      
-      // Use microtask to avoid blocking the main thread
-      queueMicrotask(() => {
-        const cutoff = Date.now() - this.cacheTTL;
-        const entriesToDelete = [];
-        let count = 0;
-        
-        // Only collect the oldest entries to remove
-        // Sort would be expensive, so we'll just do a quick scan
-        for (const [k, v] of this.proxyLookupCache) {
-          if (v.timestamp < cutoff) {
-            entriesToDelete.push(k);
-            count++;
-            
-            // Limit batch size for efficiency
-            if (count >= 200) break;
-          }
-        }
-        
-        // Delete collected entries
-        entriesToDelete.forEach(k => this.proxyLookupCache.delete(k));
-        
-        this.cacheCleaning = false;
-      });
-    }
+    // LRU cache handles size limits and TTL automatically
+    this.proxyLookupCache.set(key, proxyId);
   }
   
   extractDownloadSize(details) {

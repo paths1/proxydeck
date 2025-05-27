@@ -728,7 +728,7 @@ describe('ProxyManager', () => {
       const proxyId = 'default_proxy';
       const initialState = proxyManager.config.proxies[0].enabled;
       
-      const result = await proxyManager.toggleProxy(proxyId);
+      const result = await proxyManager.updateProxy(proxyId, { enabled: undefined });
       
       expect(result.enabled).toBe(!initialState);
       expect(proxyManager.saveConfig).toHaveBeenCalled();
@@ -739,7 +739,9 @@ describe('ProxyManager', () => {
       const proxyId = 'default_proxy';
       const newPatterns = ['new\\.pattern', 'another\\.pattern'];
       
-      const result = await proxyManager.updateProxyPatterns(proxyId, newPatterns);
+      const result = await proxyManager.updateProxy(proxyId, { 
+        routingConfig: { patterns: newPatterns } 
+      });
       
       expect(result.routingConfig.patterns).toEqual(newPatterns);
       expect(proxyManager.saveConfig).toHaveBeenCalled();
@@ -750,7 +752,9 @@ describe('ProxyManager', () => {
       const proxyId = 'default_proxy';
       const newContainers = ['container1', 'container2'];
       
-      const result = await proxyManager.updateProxyContainers(proxyId, newContainers);
+      const result = await proxyManager.updateProxy(proxyId, { 
+        routingConfig: { containers: newContainers } 
+      });
       
       expect(result.routingConfig.containers).toEqual(newContainers);
       expect(proxyManager.saveConfig).toHaveBeenCalled();

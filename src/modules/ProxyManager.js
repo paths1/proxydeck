@@ -226,10 +226,31 @@ class ProxyManager {
       throw new Error(`Proxy with ID ${proxyId} not found`);
     }
     
-    this.config.proxies[proxyIndex] = {
-      ...this.config.proxies[proxyIndex],
-      ...updates
-    };
+    const currentProxy = this.config.proxies[proxyIndex];
+    
+    // Handle toggling enabled state when no explicit value provided
+    if ('enabled' in updates && updates.enabled === undefined) {
+      updates.enabled = !currentProxy.enabled;
+    }
+    
+    // Deep merge for routingConfig updates
+    if (updates.routingConfig) {
+      this.config.proxies[proxyIndex].routingConfig = {
+        ...currentProxy.routingConfig,
+        ...updates.routingConfig,
+        // Preserve arrays properly
+        patterns: updates.routingConfig.patterns !== undefined 
+          ? [...updates.routingConfig.patterns]
+          : currentProxy.routingConfig.patterns,
+        containers: updates.routingConfig.containers !== undefined
+          ? [...updates.routingConfig.containers]
+          : currentProxy.routingConfig.containers
+      };
+      delete updates.routingConfig;
+    }
+    
+    // Apply remaining updates
+    Object.assign(this.config.proxies[proxyIndex], updates);
     
     // If priority was updated, recalculate colors for all proxies
     if ('priority' in updates) {
@@ -244,65 +265,6 @@ class ProxyManager {
     return this.config.proxies[proxyIndex];
   }
   
-  async toggleProxy(proxyId) {
-    // Enforce proxy limit check - ensure we don't have more than 10 proxies
-    if (this.config.proxies.length > 10) {
-      throw new Error('Maximum of 10 proxies are allowed');
-    }
-    
-    const proxyIndex = this.config.proxies.findIndex(p => p.id === proxyId);
-    
-    if (proxyIndex === -1) {
-      throw new Error(`Proxy with ID ${proxyId} not found`);
-    }
-    
-    this.config.proxies[proxyIndex].enabled = !this.config.proxies[proxyIndex].enabled;
-    
-    const newEnabledState = this.config.proxies[proxyIndex].enabled;
-    
-    this.enabledProxies = this.config.proxies.filter(proxy => proxy.enabled);
-    
-    await this.saveConfig();
-    await this.applyProxySettings();
-    
-    if (this.config.proxies[proxyIndex].enabled !== newEnabledState) {
-      this.config.proxies[proxyIndex].enabled = newEnabledState;
-      this.enabledProxies = this.config.proxies.filter(proxy => proxy.enabled);
-      await this.saveConfig();
-    }
-    
-    return this.config.proxies[proxyIndex];
-  }
-  
-  async updateProxyPatterns(proxyId, patterns) {
-    const proxyIndex = this.config.proxies.findIndex(p => p.id === proxyId);
-    
-    if (proxyIndex === -1) {
-      throw new Error(`Proxy with ID ${proxyId} not found`);
-    }
-    
-    this.config.proxies[proxyIndex].routingConfig.patterns = patterns;
-    
-    await this.saveConfig();
-    await this.applyProxySettings();
-    
-    return this.config.proxies[proxyIndex];
-  }
-  
-  async updateProxyContainers(proxyId, containers) {
-    const proxyIndex = this.config.proxies.findIndex(p => p.id === proxyId);
-    
-    if (proxyIndex === -1) {
-      throw new Error(`Proxy with ID ${proxyId} not found`);
-    }
-    
-    this.config.proxies[proxyIndex].routingConfig.containers = containers;
-    
-    await this.saveConfig();
-    await this.applyProxySettings();
-    
-    return this.config.proxies[proxyIndex];
-  }
   
   
   resolveProxyForRequest(hostname, cookieStoreId = null, options = {}) {

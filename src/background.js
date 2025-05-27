@@ -117,14 +117,70 @@ browser.runtime.onStartup.addListener(() => {
   initializeExtension(true);
 });
 
-function toggleProxy() {
-  return proxyManager.enable().then(() => {
-      browser.alarms.clear(ALARMS.TAB_CHECK_AFTER_TOGGLE);
-    
-    browser.alarms.create(ALARMS.TAB_CHECK_AFTER_TOGGLE, { delayInMinutes: 0.5/60 });
-    
-    return { success: true };
+// Clean up resources when extension is being suspended
+browser.runtime.onSuspend.addListener(() => {
+  // Stop traffic monitoring
+  trafficMonitor.stopMonitoring();
+  
+  // Clean up tab manager
+  tabManager.cleanup();
+  
+  // Clean up event manager listeners
+  eventManager.cleanupAllListeners();
+  
+  // Clear proxy manager caches
+  proxyManager.proxyLookupCache?.clear();
+  proxyManager.proxyInfoCache?.clear();
+});
+
+// Handle extension updates gracefully
+browser.runtime.onUpdateAvailable.addListener(() => {
+  // Clean up before update
+  trafficMonitor.stopMonitoring();
+  tabManager.cleanup();
+  eventManager.cleanupAllListeners();
+  
+  // Reload to apply update
+  browser.runtime.reload();
+});
+
+// Helper function to handle configuration updates consistently
+function handleProxyConfigurationChange() {
+  const enabledProxies = proxyManager.enabledProxies;
+  const config = proxyManager.config;
+  
+  // Notify TrafficMonitor of configuration update
+  trafficMonitor.handleConfigurationUpdate(config, enabledProxies);
+  
+  // Notify TabManager of configuration update
+  tabManager.handleConfigurationUpdate();
+  
+  // Broadcast configuration change to all extension tabs
+  browser.runtime.sendMessage({
+    action: MESSAGE_ACTIONS.CONFIGURATION_UPDATED,
+    config: config
+  }).catch(() => {
+    // Ignore errors if no listeners
   });
+}
+
+// Generic proxy update handler
+async function handleProxyUpdate(proxyId, updates) {
+  try {
+    const updatedProxy = await proxyManager.updateProxy(proxyId, updates);
+    handleProxyConfigurationChange();
+    return { 
+      success: true, 
+      proxy: updatedProxy,
+      enabled: updatedProxy.enabled 
+    };
+  } catch (error) {
+    console.error("Error updating proxy:", error);
+    return { 
+      success: false, 
+      error: error.message || 'Unknown error' 
+    };
+  }
 }
 
 const messageHandlers = {
@@ -139,135 +195,34 @@ const messageHandlers = {
     message.config.proxyEnabled = true;
     
     return proxyManager.updateConfig(message.config).then(() => {
-      // Directly notify TabManager of configuration update
-      tabManager.handleConfigurationUpdate();
+      // Handle configuration change consistently
+      handleProxyConfigurationChange();
       
-      // Also broadcast to extension pages (options/popup)
-      // Use the updated config from proxyManager which includes recalculated colors
-      browser.runtime.sendMessage({
-        action: MESSAGE_ACTIONS.CONFIGURATION_UPDATED,
-        config: proxyManager.config
-      }).catch(() => {
-        // Ignore errors if no listeners
-      });
+      // Clear and reschedule alarms if needed
+      browser.alarms.clear(ALARMS.TAB_CHECK_AFTER_TOGGLE);
       
       return { 
         success: true,
-        message: `Configuration saved successfully`
+        message: `Configuration saved and state reset successfully`
       };
     });
   },
 
-  [MESSAGE_ACTIONS.UPDATE_PROXY_PATTERNS]: (message) => {
-    const { proxyId, patterns } = message;
-    
-    return proxyManager.updateProxyPatterns(proxyId, patterns).then(() => {
-      // Get the updated configuration and broadcast it
-      return proxyManager.loadConfig().then(config => {
-        browser.runtime.sendMessage({
-          action: MESSAGE_ACTIONS.CONFIGURATION_UPDATED,
-          config: config
-        }).catch(() => {
-          // Ignore errors if no listeners
-        });
-        
-        return { success: true };
-      });
-    });
-  },
-
-  [MESSAGE_ACTIONS.UPDATE_PROXY_CONTAINERS]: (message) => {
-    const { proxyId, containers } = message;
-    
-    return proxyManager.updateProxyContainers(proxyId, containers).then(() => {
-      // Get the updated configuration and broadcast it
-      return proxyManager.loadConfig().then(config => {
-        browser.runtime.sendMessage({
-          action: MESSAGE_ACTIONS.CONFIGURATION_UPDATED,
-          config: config
-        }).catch(() => {
-          // Ignore errors if no listeners
-        });
-        
-        return { success: true };
-      });
-    });
-  },
-
-  [MESSAGE_ACTIONS.UPDATE_PROXY_ROUTING_MODE]: (message) => {
-    const { proxyId, useContainerMode } = message;
-    
-    return proxyManager.updateProxy(proxyId, {
-      routingConfig: {
-        useContainerMode: useContainerMode
-      }
-    }).then(() => {
-      // Get the updated configuration and broadcast it
-      return proxyManager.loadConfig().then(config => {
-        browser.runtime.sendMessage({
-          action: MESSAGE_ACTIONS.CONFIGURATION_UPDATED,
-          config: config
-        }).catch(() => {
-          // Ignore errors if no listeners
-        });
-        
-        return { success: true };
-      });
-    });
-  },
 
   [MESSAGE_ACTIONS.TOGGLE_PROXY_STATE]: (message) => {
-    if (message.proxyId) {
-      return proxyManager.loadConfig()
-        .then(config => {
-          const proxyExists = config.proxies.some(p => p.id === message.proxyId);
-          
-          if (!proxyExists) {
-            throw new Error(`Proxy with ID ${message.proxyId} not found`);
-          }
-          
-          if (message.enabled !== undefined) {
-            return proxyManager.updateProxy(message.proxyId, {
-              enabled: message.enabled
-            });
-          } else {
-            return proxyManager.toggleProxy(message.proxyId);
-          }
-        })
-        .then(updatedProxy => {
-          // Get the updated configuration
-          return proxyManager.loadConfig().then(config => {
-            // Broadcast configuration change to all extension tabs
-            browser.runtime.sendMessage({
-              action: MESSAGE_ACTIONS.CONFIGURATION_UPDATED,
-              config: config
-            }).catch(() => {
-              // Ignore errors if no listeners
-            });
-            
-            return {
-              success: true,
-              enabled: updatedProxy.enabled,
-              proxy: updatedProxy
-            };
-          });
-        })
-        .catch(error => {
-          console.error("Error in toggleProxyState handler:", error);
-          return { 
-            success: false, 
-            error: `Failed to toggle proxy: ${error.message || 'Unknown error'}` 
-          };
-        });
-    } else {
-      return toggleProxy().then(() => {
-        return { 
-          success: true, 
-          proxyEnabled: true,
-          message: 'Legacy call: Proxy system enabled (note: no specific proxy was toggled)'
-        };
+    if (!message.proxyId) {
+      return Promise.resolve({ 
+        success: false, 
+        error: 'proxyId is required for TOGGLE_PROXY_STATE'
       });
     }
+    
+    // Use generic handler with enabled state
+    const updates = message.enabled !== undefined 
+      ? { enabled: message.enabled }
+      : { enabled: undefined }; // Will trigger toggle logic in updateProxy
+    
+    return handleProxyUpdate(message.proxyId, updates);
   },
 
 
@@ -280,11 +235,6 @@ const messageHandlers = {
   [MESSAGE_ACTIONS.GET_TRAFFIC_SOURCES]: async (message) => {
     const { config = { proxies: [] } } = await browser.storage.local.get('config');
     return Promise.resolve(trafficMonitor.getAllTrafficSources(config.proxies || []));
-  },
-
-
-  [MESSAGE_ACTIONS.PING]: () => {
-    return Promise.resolve({ pong: true, timestamp: Date.now() });
   },
 
   [MESSAGE_ACTIONS.UPDATE_ICON_THEME]: async (message) => {
@@ -306,16 +256,6 @@ const messageHandlers = {
     }
     
     return Promise.resolve({ success: true });
-  },
-
-  [MESSAGE_ACTIONS.TOGGLE_PROXY]: () => {
-    return toggleProxy().then(() => {
-      return { 
-        success: true, 
-        proxyEnabled: true,
-        message: 'Proxy system enabled and tab checking scheduled'
-      };
-    });
   },
 
   [MESSAGE_ACTIONS.GET_PROXY_FOR_TAB]: (message, sender, sendResponse) => {
@@ -354,61 +294,6 @@ const messageHandlers = {
     }
     return true;
   },
-
-  [MESSAGE_ACTIONS.GET_MATCHING_PROXIES]: async (message) => {
-    const { url, cookieStoreId } = message;
-    
-    if (!url) {
-      return { success: false, error: 'URL is required' };
-    }
-
-    try {
-      const parsedUrl = new URL(url);
-      const hostname = parsedUrl.hostname.toLowerCase();
-      
-      // Get all proxies from storage
-      const config = await proxyManager.loadConfig();
-      const proxies = config.proxies || [];
-      
-      // Filter to only enabled proxies
-      const enabledProxies = proxies.filter(proxy => proxy.enabled);
-      
-      // Find proxies that match the URL
-      const matchingProxies = [];
-      
-      for (const proxy of enabledProxies) {
-        // For container-based routing
-        if (proxy.routingConfig.useContainerMode) {
-          // If URL is in a container, check if proxy handles this container
-          if (cookieStoreId && 
-              proxy.routingConfig.containers && 
-              proxy.routingConfig.containers.includes(cookieStoreId)) {
-            matchingProxies.push(proxy);
-          }
-        } 
-        // For pattern-based routing
-        else if (proxy.routingConfig.patterns && proxy.routingConfig.patterns.length > 0) {
-          // Check if any pattern matches the URL
-          const matches = patternMatcher.matchesAnyPattern(hostname, proxy.routingConfig.patterns);
-          
-          if (matches) {
-            matchingProxies.push(proxy);
-          }
-        }
-      }
-      
-      // Sort by priority (lower number = higher priority)
-      matchingProxies.sort((a, b) => a.priority - b.priority);
-      
-      return {
-        success: true,
-        matchingProxies: matchingProxies
-      };
-    } catch (error) {
-      console.error('Error in GET_MATCHING_PROXIES handler:', error);
-      return { success: false, error: error.message };
-    }
-  },
 };
 
 browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -436,7 +321,7 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
   return Promise.resolve({ error: "Unhandled action" });
 });
 
-browser.action.onClicked.addListener(toggleProxy);
+// Browser action click handler removed - legacy functionality
 
 (async function initializeState() {
   // Initialize icon first

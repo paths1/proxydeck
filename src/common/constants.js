@@ -2,27 +2,18 @@
 export const MESSAGE_ACTIONS = {
   GET_CONFIG: 'getConfig',
   SAVE_CONFIG: 'saveConfig',
-  UPDATE_PROXY_PATTERNS: 'updateProxyPatterns',
-  UPDATE_PROXY_CONTAINERS: 'updateProxyContainers',
-  UPDATE_PROXY_ROUTING_MODE: 'updateProxyRoutingMode',
   
   TOGGLE_PROXY_STATE: 'toggleProxyState',
-  TOGGLE_PROXY: 'toggleProxy',
   
   GET_PROXY_FOR_TAB: 'getProxyForTab',
-  GET_MATCHING_PROXIES: 'getMatchingProxies',
-  
   
   GET_TRAFFIC_DATA: 'getTrafficData',
   GET_TRAFFIC_SOURCES: 'getTrafficSources',
-  SET_TRAFFIC_WINDOW: 'setTrafficWindow',
   TRAFFIC_UPDATE: 'trafficUpdate',
   
   CONFIGURATION_UPDATED: 'configurationUpdated',
   
-  UPDATE_ICON_THEME: 'updateIconTheme',
-  
-  PING: 'ping'
+  UPDATE_ICON_THEME: 'updateIconTheme'
 };
 
 export const ALARMS = {
