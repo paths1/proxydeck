@@ -4,6 +4,7 @@ import { MESSAGE_ACTIONS, SPECIAL_TRAFFIC_COLORS } from '../common/constants.js'
 import browserCapabilities from '../utils/feature-detection.js';
 import eventManager from './EventManager.js';
 import { ProxyTrafficTracker } from './ProxyTrafficTracker.js';
+import ProxyResolver from './ProxyResolver.js';
 import {
   createEmptyTrafficData,
   createEmptyDataPoint,
@@ -24,6 +25,7 @@ class TrafficMonitor {
   constructor(options = {}) {
     this.patternMatcher = options.patternMatcher;
     this.proxyTrafficTracker = options.proxyTrafficTracker || new ProxyTrafficTracker();
+    this.proxyResolver = new ProxyResolver(this.patternMatcher);
     this.urlHostnameRegex = /^https?:\/\/([^/:]+)/i;
     
     // Recharts-compatible data structure
@@ -96,7 +98,7 @@ class TrafficMonitor {
       download: 0,
       upload: 0,
       proxyDownload: new Map(),
-      proxyUpload: new Map(),
+      proxyUpload: new Map(), 
       directDownload: 0,
       directUpload: 0,
       othersDownload: 0,
@@ -126,9 +128,15 @@ class TrafficMonitor {
     this.stopMonitoring();
     
     this.enabledProxies = enabledProxies;
+    
+    // Build proxy aggregation key map
+    const configVersion = this.proxyResolver.generateConfigVersion(config);
+    this.proxyResolver.buildProxyKeyMap(enabledProxies, configVersion);
+    
     this.currentSample = this.createEmptySample();
     this.proxyLookupCache.clear();
     this.proxyInfoCache.clear();
+    this.proxyResolver.clearCache();
     
     // Clear request queue to prevent processing stale requests
     this.requestQueue = [];
@@ -190,37 +198,40 @@ class TrafficMonitor {
     // Clear request queue immediately to prevent processing stale requests
     this.requestQueue = [];
     
-    // Determine which proxies were removed
-    const oldProxyIds = new Set(this.enabledProxies?.map(p => p.id) || []);
-    const newProxyIds = new Set(enabledProxies.map(p => p.id));
-    const removedProxyIds = [...oldProxyIds].filter(id => !newProxyIds.has(id));
-    
-    // Clear traffic data for removed proxies only
-    if (removedProxyIds.length > 0) {
-      this.clearTrafficDataForProxies(removedProxyIds);
+    // Update proxy resolver with new configuration
+    const oldKeys = new Set(this.proxyResolver.proxyKeyMap.keys());
+    const configVersion = this.proxyResolver.generateConfigVersion(newConfig);
+    this.proxyResolver.buildProxyKeyMap(enabledProxies, configVersion);
+    const newKeys = new Set(this.proxyResolver.proxyKeyMap.keys());
+    const removedKeys = [...oldKeys].filter(key => !newKeys.has(key));
+    if (removedKeys.length > 0) {
+      this.clearTrafficDataForKeys(removedKeys);
     }
+    
+    // Clear resolution cache since config changed
+    this.proxyResolver.clearCache();
     
     // Restart monitoring with new configuration
     this.startMonitoring(newConfig, enabledProxies);
   }
 
-  clearTrafficDataForProxies(proxyIds) {
-    if (!proxyIds || proxyIds.length === 0) return;
+  clearTrafficDataForKeys(aggregationKeys) {
+    if (!aggregationKeys || aggregationKeys.length === 0) return;
     
     for (const windowSize in this.trafficData) {
       const windowData = this.trafficData[windowSize];
       
       // Remove proxy-specific fields from all data points
       windowData.data.forEach(point => {
-        proxyIds.forEach(proxyId => {
-          delete point[`download_${proxyId}`];
-          delete point[`upload_${proxyId}`];
+        aggregationKeys.forEach(key => {
+          delete point[`download_${key}`];
+          delete point[`upload_${key}`];
         });
       });
       
       // Remove proxy stats
-      proxyIds.forEach(proxyId => {
-        delete windowData.stats.perProxy[proxyId];
+      aggregationKeys.forEach(key => {
+        delete windowData.stats.perProxy[key];
       });
       
       // Reset last processed tracking for affected data
@@ -231,23 +242,23 @@ class TrafficMonitor {
     
     // Clear proxy-specific data from current sample
     if (this.currentSample) {
-      proxyIds.forEach(proxyId => {
-        this.currentSample.proxyDownload.delete(proxyId);
-        this.currentSample.proxyUpload.delete(proxyId);
+      aggregationKeys.forEach(key => {
+        this.currentSample.proxyDownload.delete(key);
+        this.currentSample.proxyUpload.delete(key);
       });
     }
   }
   
-  initializeProxyData(proxies) {
+  initializeProxyData(_proxies) {
     const timestamp = Date.now();
     
     for (const windowSize of ['1min', '5min', '10min']) {
       const windowData = this.trafficData[windowSize];
       
-      // Initialize per-proxy stats
-      for (const proxy of proxies) {
-        if (!windowData.stats.perProxy[proxy.id]) {
-          windowData.stats.perProxy[proxy.id] = {
+      // Initialize per-proxy stats for aggregation keys
+      for (const [aggregationKey] of this.proxyResolver.proxyKeyMap) {
+        if (!windowData.stats.perProxy[aggregationKey]) {
+          windowData.stats.perProxy[aggregationKey] = {
             download: { current: 0, peak: 0, total: 0, average: 0 },
             upload: { current: 0, peak: 0, total: 0, average: 0 }
           };
@@ -257,8 +268,9 @@ class TrafficMonitor {
       // Add initial data point if no data exists
       if (windowData.data.length === 0) {
         const initialPoint = createEmptyDataPoint(timestamp);
-        for (const proxy of proxies) {
-          addProxyDataToPoint(initialPoint, proxy.id, 0, 0);
+        for (const [aggregationKey] of this.proxyResolver.proxyKeyMap) {
+          initialPoint[`download_${aggregationKey}`] = 0;
+          initialPoint[`upload_${aggregationKey}`] = 0;
         }
         windowData.data.push(initialPoint);
         windowData.meta.pointCount = 1;
@@ -322,12 +334,12 @@ class TrafficMonitor {
     
     switch (resolution.type) {
       case 'configured':
-        if (resolution.proxyId) {
-          const currentProxyUpload = this.currentSample.proxyUpload.get(resolution.proxyId) || 0;
-          this.currentSample.proxyUpload.set(resolution.proxyId, currentProxyUpload + size);
+        if (resolution.aggregationKey) {
+          const currentProxyUpload = this.currentSample.proxyUpload.get(resolution.aggregationKey) || 0;
+          this.currentSample.proxyUpload.set(resolution.aggregationKey, currentProxyUpload + size);
           
           // Track request for download correlation
-          if (details.requestId) {
+          if (details.requestId && resolution.proxyId) {
             this.proxyTrafficTracker.recordProxyForRequest(details.requestId, resolution.proxyId);
           }
         }
@@ -335,7 +347,7 @@ class TrafficMonitor {
       case 'direct':
         this.currentSample.directUpload += size;
         break;
-      case 'unmatched':
+      case 'others':
         this.currentSample.othersUpload += size;
         break;
     }
@@ -380,9 +392,9 @@ class TrafficMonitor {
     
     switch (resolution.type) {
       case 'configured':
-        if (resolution.proxyId) {
-          const currentProxyDownload = this.currentSample.proxyDownload.get(resolution.proxyId) || 0;
-          this.currentSample.proxyDownload.set(resolution.proxyId, currentProxyDownload + size);
+        if (resolution.aggregationKey) {
+          const currentProxyDownload = this.currentSample.proxyDownload.get(resolution.aggregationKey) || 0;
+          this.currentSample.proxyDownload.set(resolution.aggregationKey, currentProxyDownload + size);
         }
         break;
       case 'direct':
@@ -406,9 +418,10 @@ class TrafficMonitor {
     }
     
     // Chrome - use pattern matching
-    const proxyId = this.resolveProxyForRequest(details);
-    if (proxyId) {
-      return { type: 'configured', proxyId };
+    const proxy = this.proxyResolver.resolveProxyForRequest(details, this.enabledProxies);
+    if (proxy) {
+      const aggregationKey = this.proxyResolver.getAggregationKey(proxy);
+      return { type: 'configured', aggregationKey, proxyId: proxy.id };
     } else {
       // Chrome: No matching proxy = unmatched traffic
       return { type: 'others' };
@@ -418,51 +431,36 @@ class TrafficMonitor {
   resolveProxyFromProxyInfo(details) {
     const { type, host, port } = details.proxyInfo;
     
-    // Extract request hostname for cache key
-    let requestHost;
-    try {
-      const hostnameMatch = this.urlHostnameRegex.exec(details.url);
-      requestHost = hostnameMatch ? hostnameMatch[1] : new URL(details.url).hostname;
-    } catch {
-      requestHost = 'unknown';
-    }
-    
-    // Generate cache key
-    const cacheKey = `${requestHost}:${type}:${host}:${port}`;
+    // Generate aggregation key from proxyInfo
+    const normalizedType = type === 'socks' ? 'socks' : type.toLowerCase().replace('https', 'http');
+    const aggregationKey = `${normalizedType}:${host}:${port}`;
     
     // Check cache first
-    const cached = this.proxyInfoCache.get(cacheKey);
+    const cached = this.proxyInfoCache.get(aggregationKey);
     if (cached) {
       return cached;
     }
     
-    // Find matching configured proxies
-    const candidates = this.enabledProxies.filter(proxy => {
-      // Map proxyInfo type to proxy.proxyType
-      const proxyType = proxy.proxyType || 'socks5';
-      const mappedType = proxyType === 'socks5' ? 'socks' : proxyType;
-      
-      return mappedType === type && 
-             proxy.host === host && 
-             proxy.port === port;
-    });
+    // Find matching proxy using ProxyResolver
+    const proxy = this.proxyResolver.resolveProxyFromProxyInfo(details.proxyInfo, this.enabledProxies);
     
     let resolution;
     
-    if (candidates.length === 0) {
-      // No matching configured proxy
+    if (!proxy) {
+      // No matching configured proxy - this is 'others' traffic
       resolution = { type: 'others' };
-    } else if (candidates.length === 1) {
-      // Single match
-      resolution = { type: 'configured', proxyId: candidates[0].id };
     } else {
-      // Multiple matches - use existing resolution logic
-      const proxyId = this.resolveProxyForRequest(details, candidates);
-      resolution = { type: 'configured', proxyId };
+      // Found matching proxy - use its aggregation key
+      const proxyAggregationKey = this.proxyResolver.getAggregationKey(proxy);
+      resolution = { 
+        type: 'configured', 
+        aggregationKey: proxyAggregationKey,
+        proxyId: proxy.id // Still track for compatibility
+      };
     }
     
     // Cache the result
-    this.proxyInfoCache.set(cacheKey, resolution);
+    this.proxyInfoCache.set(aggregationKey, resolution);
     
     return resolution;
   }
@@ -533,6 +531,21 @@ class TrafficMonitor {
     this.proxyLookupCache.set(key, proxyId);
   }
   
+  getAggregationKeysFromDataPoint(dataPoint) {
+    const aggregationKeys = new Set();
+    
+    for (const key in dataPoint) {
+      if (key.startsWith('download_') && 
+          key !== 'download_total' && 
+          key !== 'download_direct' && 
+          key !== 'download_others') {
+        aggregationKeys.add(key.replace('download_', ''));
+      }
+    }
+    
+    return Array.from(aggregationKeys);
+  }
+  
   extractDownloadSize(details) {
     // Priority: Content-Length > responseSize > transferSize
     if (details.responseHeaders) {
@@ -583,28 +596,34 @@ class TrafficMonitor {
     dataPoint.download_others = this.currentSample.othersDownload;
     dataPoint.upload_others = this.currentSample.othersUpload;
     
-    // Add per-proxy data
-    const proxiesWithData = new Set();
+    // Add per-proxy data using aggregation keys
+    const keysWithData = new Set();
     
-    for (const [proxyId, downloadBytes] of this.currentSample.proxyDownload) {
-      const uploadBytes = this.currentSample.proxyUpload.get(proxyId) || 0;
-      addProxyDataToPoint(dataPoint, proxyId, downloadBytes, uploadBytes);
-      proxiesWithData.add(proxyId);
+    // Process download data
+    for (const [aggregationKey, downloadBytes] of this.currentSample.proxyDownload) {
+      const uploadBytes = this.currentSample.proxyUpload.get(aggregationKey) || 0;
+      // Use aggregation key as the data point key
+      dataPoint[`download_${aggregationKey}`] = downloadBytes;
+      dataPoint[`upload_${aggregationKey}`] = uploadBytes;
+      keysWithData.add(aggregationKey);
     }
     
-    for (const [proxyId, uploadBytes] of this.currentSample.proxyUpload) {
-      if (!proxiesWithData.has(proxyId)) {
-        const downloadBytes = this.currentSample.proxyDownload.get(proxyId) || 0;
-        addProxyDataToPoint(dataPoint, proxyId, downloadBytes, uploadBytes);
-        proxiesWithData.add(proxyId);
+    // Process upload data for keys not already processed
+    for (const [aggregationKey, uploadBytes] of this.currentSample.proxyUpload) {
+      if (!keysWithData.has(aggregationKey)) {
+        const downloadBytes = this.currentSample.proxyDownload.get(aggregationKey) || 0;
+        dataPoint[`download_${aggregationKey}`] = downloadBytes;
+        dataPoint[`upload_${aggregationKey}`] = uploadBytes;
+        keysWithData.add(aggregationKey);
       }
     }
     
-    // Add zero data for enabled proxies without activity
-    if (this.enabledProxies) {
-      for (const proxy of this.enabledProxies) {
-        if (!proxiesWithData.has(proxy.id)) {
-          addProxyDataToPoint(dataPoint, proxy.id, 0, 0);
+    // Add zero data for all known aggregation keys without activity
+    if (this.proxyResolver.proxyKeyMap.size > 0) {
+      for (const [aggregationKey] of this.proxyResolver.proxyKeyMap) {
+        if (!keysWithData.has(aggregationKey)) {
+          dataPoint[`download_${aggregationKey}`] = 0;
+          dataPoint[`upload_${aggregationKey}`] = 0;
         }
       }
     }
@@ -690,16 +709,16 @@ class TrafficMonitor {
     windowData.stats.upload.total = data.reduce((sum, pt) => sum + pt.upload_total, 0);
     windowData.stats.upload.average = windowData.stats.upload.total / data.length;
     
-    // Per-proxy stats
-    const proxyIds = getProxyIdsFromDataPoint(lastPoint);
+    // Per-proxy stats using aggregation keys
+    const aggregationKeys = this.getAggregationKeysFromDataPoint(lastPoint);
     
-    for (const proxyId of proxyIds) {
-      const downloadKey = `download_${proxyId}`;
-      const uploadKey = `upload_${proxyId}`;
+    for (const aggregationKey of aggregationKeys) {
+      const downloadKey = `download_${aggregationKey}`;
+      const uploadKey = `upload_${aggregationKey}`;
       
       // Initialize if needed
-      if (!windowData.stats.perProxy[proxyId]) {
-        windowData.stats.perProxy[proxyId] = {
+      if (!windowData.stats.perProxy[aggregationKey]) {
+        windowData.stats.perProxy[aggregationKey] = {
           download: { current: 0, peak: 0, total: 0, average: 0 },
           upload: { current: 0, peak: 0, total: 0, average: 0 }
         };
@@ -707,19 +726,19 @@ class TrafficMonitor {
       
       // Download stats for this proxy
       const downloadValues = data.map(pt => pt[downloadKey] || 0);
-      windowData.stats.perProxy[proxyId].download.current = lastPoint[downloadKey] || 0;
-      windowData.stats.perProxy[proxyId].download.peak = Math.max(...downloadValues);
-      windowData.stats.perProxy[proxyId].download.total = downloadValues.reduce((sum, val) => sum + val, 0);
-      windowData.stats.perProxy[proxyId].download.average = 
-        windowData.stats.perProxy[proxyId].download.total / data.length;
+      windowData.stats.perProxy[aggregationKey].download.current = lastPoint[downloadKey] || 0;
+      windowData.stats.perProxy[aggregationKey].download.peak = Math.max(...downloadValues);
+      windowData.stats.perProxy[aggregationKey].download.total = downloadValues.reduce((sum, val) => sum + val, 0);
+      windowData.stats.perProxy[aggregationKey].download.average = 
+        windowData.stats.perProxy[aggregationKey].download.total / data.length;
       
       // Upload stats for this proxy
       const uploadValues = data.map(pt => pt[uploadKey] || 0);
-      windowData.stats.perProxy[proxyId].upload.current = lastPoint[uploadKey] || 0;
-      windowData.stats.perProxy[proxyId].upload.peak = Math.max(...uploadValues);
-      windowData.stats.perProxy[proxyId].upload.total = uploadValues.reduce((sum, val) => sum + val, 0);
-      windowData.stats.perProxy[proxyId].upload.average = 
-        windowData.stats.perProxy[proxyId].upload.total / data.length;
+      windowData.stats.perProxy[aggregationKey].upload.current = lastPoint[uploadKey] || 0;
+      windowData.stats.perProxy[aggregationKey].upload.peak = Math.max(...uploadValues);
+      windowData.stats.perProxy[aggregationKey].upload.total = uploadValues.reduce((sum, val) => sum + val, 0);
+      windowData.stats.perProxy[aggregationKey].upload.average = 
+        windowData.stats.perProxy[aggregationKey].upload.total / data.length;
     }
     
     // Update tracking
@@ -776,32 +795,32 @@ class TrafficMonitor {
     windowData.stats.upload.total += newUploadSum;
     windowData.stats.upload.average = windowData.stats.upload.total / data.length;
     
-    // Update per-proxy stats
-    const proxyIds = getProxyIdsFromDataPoint(lastPoint);
+    // Update per-proxy stats using aggregation keys
+    const aggregationKeys = this.getAggregationKeysFromDataPoint(lastPoint);
     
-    for (const proxyId of proxyIds) {
-      const downloadKey = `download_${proxyId}`;
-      const uploadKey = `upload_${proxyId}`;
+    for (const aggregationKey of aggregationKeys) {
+      const downloadKey = `download_${aggregationKey}`;
+      const uploadKey = `upload_${aggregationKey}`;
       
       // Initialize if needed
-      if (!windowData.stats.perProxy[proxyId]) {
-        windowData.stats.perProxy[proxyId] = {
+      if (!windowData.stats.perProxy[aggregationKey]) {
+        windowData.stats.perProxy[aggregationKey] = {
           download: { current: 0, peak: 0, total: 0, average: 0 },
           upload: { current: 0, peak: 0, total: 0, average: 0 }
         };
       }
       
       // Update current values
-      windowData.stats.perProxy[proxyId].download.current = lastPoint[downloadKey] || 0;
-      windowData.stats.perProxy[proxyId].upload.current = lastPoint[uploadKey] || 0;
+      windowData.stats.perProxy[aggregationKey].download.current = lastPoint[downloadKey] || 0;
+      windowData.stats.perProxy[aggregationKey].upload.current = lastPoint[uploadKey] || 0;
       
       // Update peaks
-      windowData.stats.perProxy[proxyId].download.peak = Math.max(
-        windowData.stats.perProxy[proxyId].download.peak,
+      windowData.stats.perProxy[aggregationKey].download.peak = Math.max(
+        windowData.stats.perProxy[aggregationKey].download.peak,
         lastPoint[downloadKey] || 0
       );
-      windowData.stats.perProxy[proxyId].upload.peak = Math.max(
-        windowData.stats.perProxy[proxyId].upload.peak,
+      windowData.stats.perProxy[aggregationKey].upload.peak = Math.max(
+        windowData.stats.perProxy[aggregationKey].upload.peak,
         lastPoint[uploadKey] || 0
       );
       
@@ -815,12 +834,12 @@ class TrafficMonitor {
       }
       
       // Update totals and averages
-      windowData.stats.perProxy[proxyId].download.total += newProxyDownloadSum;
-      windowData.stats.perProxy[proxyId].download.average = 
-        windowData.stats.perProxy[proxyId].download.total / data.length;
-      windowData.stats.perProxy[proxyId].upload.total += newProxyUploadSum;
-      windowData.stats.perProxy[proxyId].upload.average = 
-        windowData.stats.perProxy[proxyId].upload.total / data.length;
+      windowData.stats.perProxy[aggregationKey].download.total += newProxyDownloadSum;
+      windowData.stats.perProxy[aggregationKey].download.average = 
+        windowData.stats.perProxy[aggregationKey].download.total / data.length;
+      windowData.stats.perProxy[aggregationKey].upload.total += newProxyUploadSum;
+      windowData.stats.perProxy[aggregationKey].upload.average = 
+        windowData.stats.perProxy[aggregationKey].upload.total / data.length;
     }
     
     // Update tracking
@@ -1065,7 +1084,30 @@ class TrafficMonitor {
   }
   
   getAllTrafficSources(enabledProxies = []) {
-    const allSources = [...enabledProxies];
+    const allSources = [];
+    
+    // Build proxy key map if not already built
+    if (this.proxyResolver.proxyKeyMap.size === 0 && enabledProxies.length > 0) {
+      const config = { proxies: enabledProxies };
+      const configVersion = this.proxyResolver.generateConfigVersion(config);
+      this.proxyResolver.buildProxyKeyMap(enabledProxies, configVersion);
+    }
+    
+    // Get all aggregation keys and their grouped proxies
+    const processedKeys = new Set();
+    
+    for (const [aggregationKey, groupInfo] of this.proxyResolver.proxyKeyMap) {
+      if (!processedKeys.has(aggregationKey)) {
+        allSources.push({
+          id: aggregationKey,
+          name: groupInfo.displayName,
+          color: groupInfo.color,
+          isAggregated: true,
+          proxies: groupInfo.proxies
+        });
+        processedKeys.add(aggregationKey);
+      }
+    }
     
     // Firefox: Show both Direct and Unmatched
     if (browserCapabilities.webRequest.hasProxyInfoInDetails) {
