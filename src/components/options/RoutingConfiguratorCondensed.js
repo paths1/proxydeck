@@ -118,7 +118,7 @@ const RoutingConfiguratorCondensed = ({ proxy, onChange, originalRoutingConfig, 
             <ContainerRoutingForm 
               proxy={proxy}
               onChange={onChange}
-              originalRoutingConfig={originalRoutingConfig}
+              originalContainers={originalRoutingConfig?.containers}
               dirtyFields={dirtyFields}
               updateFieldDirtyState={updateFieldDirtyState}
             />

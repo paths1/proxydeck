@@ -1,13 +1,45 @@
 const path = require('path');
 const fs = require('fs');
+const { execSync } = require('child_process');
 const { DefinePlugin } = require('webpack');
 const CopyWebpackPlugin = require('copy-webpack-plugin');
 const MiniCssExtractPlugin = require('mini-css-extract-plugin');
 const ManifestPlugin = require('./webpack-plugins/manifest-plugin');
 
+function getVersionFromGitTag() {
+  try {
+    const tag = execSync('git tag -l --sort=-version:refname', { encoding: 'utf8' })
+      .trim()
+      .split('\n')[0];
+    
+    if (tag && tag.match(/^v?\d+\.\d+\.\d+$/)) {
+      const version = tag.replace(/^v/, '');
+      
+      // Update package.json if version differs
+      const packageJsonPath = path.resolve(__dirname, 'package.json');
+      const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
+      
+      if (packageJson.version !== version) {
+        packageJson.version = version;
+        fs.writeFileSync(packageJsonPath, JSON.stringify(packageJson, null, 2) + '\n');
+        console.log(`Updated package.json version to ${version}`);
+      }
+      
+      return version;
+    }
+  } catch (e) {
+    // Git not available or no tags
+  }
+  
+  // Fallback to package.json
+  return require('./package.json').version;
+}
+
 module.exports = (env) => {
   const target = env.target || 'chrome';
+  const version = getVersionFromGitTag();
   console.log(`Building for target: ${target}`);
+  console.log(`Version: ${version}`);
   
   const outputPath = path.resolve(__dirname, target === 'firefox' ? 'dist/firefox' : 'dist/chrome');
   
@@ -167,7 +199,8 @@ module.exports = (env) => {
       // Generate manifest during build
       new ManifestPlugin({
         browser: target,
-        manifestDir: './manifest'
+        manifestDir: './manifest',
+        version: version
       }),
       // Copy static assets
       new CopyWebpackPlugin({

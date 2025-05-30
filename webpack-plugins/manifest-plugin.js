@@ -1,10 +1,10 @@
-const fs = require('fs');
 const path = require('path');
 
 class ManifestPlugin {
   constructor(options) {
     this.browser = options.browser || 'chrome';
     this.manifestDir = options.manifestDir || './manifest';
+    this.version = options.version;
   }
 
   apply(compiler) {
@@ -25,6 +25,12 @@ class ManifestPlugin {
 
             // Generate merged manifest
             const manifest = this.deepMerge(baseManifest, browserOverrides);
+            
+            // Override version if provided
+            if (this.version) {
+              manifest.version = this.version;
+            }
+            
             const manifestContent = JSON.stringify(manifest, null, 2);
 
             // Add manifest to webpack output
