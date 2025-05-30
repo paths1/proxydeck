@@ -8,6 +8,12 @@ module.exports = {
         },
       },
     ],
-    '@babel/preset-react', // Added for React JSX transformation
+    [
+      '@babel/preset-react',
+      {
+        runtime: 'automatic',
+        importSource: 'preact'
+      }
+    ]
   ],
 };

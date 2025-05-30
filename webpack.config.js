@@ -88,10 +88,7 @@ module.exports = (env) => {
           exclude: /node_modules/,
           use: {
             loader: 'babel-loader',
-            options: {
-              presets: ['@babel/preset-env', '@babel/preset-react'],
-              plugins: []
-            }
+            // Use babel.config.js instead of inline options
           },
         },
         {
@@ -116,10 +113,17 @@ module.exports = (env) => {
     externals: env.target === 'firefox' ? {'webextension-polyfill' : 'browser'} : {},
     resolve: {
       alias: {
+        'react': 'preact/compat',
+        'react-dom': 'preact/compat',
+        // shadcn
+        '@': path.resolve(__dirname, "src/"),
         // Use the WebExtension polyfill directly
         '@browser-polyfill': 'webextension-polyfill',
         '@/components': path.resolve(__dirname, 'src/components/'),
         '@/lib': path.resolve(__dirname, 'src/lib/'),
+        // Additional Preact compatibility aliases (for dependencies that expect React)
+        "react-dom/test-utils": "preact/test-utils",
+        "react/jsx-runtime": "preact/jsx-runtime",
       },
       extensions: ['.js', '.jsx', '.json', '.wasm'] // Added .jsx
     },
@@ -136,10 +140,10 @@ module.exports = (env) => {
         // Use deterministic names without hashes
         name: false,  // Let each cache group define its own name
         cacheGroups: {
-          // Core React - always needed
-          react: {
-            test: /[\\/]node_modules[\\/](react|react-dom|scheduler|react-is)[\\/]/,
-            name: 'vendor-react',
+          // Core Preact - always needed
+          preact: {
+            test: /[\\/]node_modules[\\/](preact)[\\/]/,
+            name: 'vendor-preact',
             chunks: (chunk) => chunk.name !== 'background',
             priority: 40,
             enforce: true

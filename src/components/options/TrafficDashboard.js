@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'preact/hooks';
 import browser from 'webextension-polyfill';
 import { MESSAGE_ACTIONS } from '../../common/constants';
 import TrafficCharts from './TrafficCharts';
@@ -214,7 +214,7 @@ const TrafficDashboard = () => {
   // Initial load effect - only runs once
   useEffect(() => {
     if (initializedRef.current) {
-      return; // Prevent duplicate calls in React.StrictMode
+      return; // Prevent duplicate calls in strict mode
     }
     initializedRef.current = true;
 

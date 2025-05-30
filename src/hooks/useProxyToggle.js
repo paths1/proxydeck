@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback } from 'preact/hooks';
 import * as browser from 'webextension-polyfill';
 import { MESSAGE_ACTIONS } from '../common/constants';
 

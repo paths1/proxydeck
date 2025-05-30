@@ -1,4 +1,4 @@
-import React from 'react';
+import { useEffect } from 'preact/hooks';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import {
@@ -25,7 +25,7 @@ import { useProxyToggle } from '../../hooks/useProxyToggle';
 
 /**
  * @file ProxyItem.js
- * @description React component representing a single proxy item in the list.
+ * @description Preact component representing a single proxy item in the list.
  * It's sortable (drag and drop) and contains an accordion to show/hide the `ProxyForm` for editing.
  */
 
@@ -66,7 +66,7 @@ const ProxyItem = ({ proxy, priorityColor, isExpanded, onToggle, onSave, onUndo,
   );
 
   // Auto-collapse when dragging starts
-  React.useEffect(() => {
+  useEffect(() => {
     if (isDragging && isExpanded) {
       onToggle();
     }

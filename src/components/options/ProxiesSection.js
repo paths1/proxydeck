@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'preact/hooks';
 import * as browser from 'webextension-polyfill';
 import { Button } from '@/components/ui/button';
 import {
@@ -29,7 +29,7 @@ import { MESSAGE_ACTIONS } from '../../common/constants';
 
 /**
  * @file ProxiesSection.js
- * @description React component for managing proxy configurations, including adding, deleting,
+ * @description Preact component for managing proxy configurations, including adding, deleting,
  * reordering (drag and drop), and editing individual proxy settings.
  * It uses `OptionsPageConfigManager` to handle the persistence of proxy data.
  */

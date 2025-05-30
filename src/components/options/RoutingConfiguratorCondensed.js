@@ -1,14 +1,15 @@
-import React, { useState, useEffect, Suspense } from 'react';
+import { useState, useEffect } from 'preact/hooks';
+import { Suspense, lazy } from 'preact/compat';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 
 // Lazy load routing forms
-const RegexRoutingForm = React.lazy(() => import(/* webpackChunkName: "regex-routing-form" */ './RegexRoutingForm'));
-const ContainerRoutingForm = React.lazy(() => import(/* webpackChunkName: "container-routing-form" */ './ContainerRoutingForm'));
+const RegexRoutingForm = lazy(() => import(/* webpackChunkName: "regex-routing-form" */ './RegexRoutingForm'));
+const ContainerRoutingForm = lazy(() => import(/* webpackChunkName: "container-routing-form" */ './ContainerRoutingForm'));
 
 /**
  * @file RoutingConfiguratorCondensed.js
- * @description React component that provides a condensed inline tabbed interface for configuring
+ * @description Preact component that provides a condensed inline tabbed interface for configuring
  * different proxy routing modes (e.g., Regex-based, Container-based).
  */
 

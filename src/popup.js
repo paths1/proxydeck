@@ -1,11 +1,6 @@
-import React from 'react';
-import ReactDOM from 'react-dom/client';
+import { render } from 'preact';
 import './index.css';
 import PopupApp from './pages/popup/PopupApp';
 
-const root = ReactDOM.createRoot(document.getElementById('popup-root'));
-root.render(
-  <React.StrictMode>
-    <PopupApp />
-  </React.StrictMode>
-);
+const container = document.getElementById('popup-root');
+render(<PopupApp />, container);

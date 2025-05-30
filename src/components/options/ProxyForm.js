@@ -1,4 +1,5 @@
-import React, { useState, useEffect, Suspense, useRef } from 'react';
+import { useState, useEffect, useRef } from 'preact/hooks';
+import { Suspense, lazy } from 'preact/compat';
 import { Button } from '@/components/ui/button';
 import { InputWithBadge } from '@/components/ui/input-with-badge';
 import { ValidatedInputWithBadge } from '@/components/ui/validated-input-with-badge';
@@ -15,12 +16,12 @@ const toast = {
   info: (message) => console.log('ℹ️', message)
 };
 // Lazy load routing configurator
-const RoutingConfiguratorComponent = React.lazy(() => import(/* webpackChunkName: "routing-configurator" */ './RoutingConfiguratorCondensed'));
+const RoutingConfiguratorComponent = lazy(() => import(/* webpackChunkName: "routing-configurator" */ './RoutingConfiguratorCondensed'));
 import browserCapabilities from '../../utils/feature-detection.js'; // Corrected import name
 
 /**
  * @file ProxyForm.js
- * @description React component for editing the details of a single proxy configuration.
+ * @description Preact component for editing the details of a single proxy configuration.
  * Includes fields for basic info, authentication, and routing configuration.
  * Also provides actions to save, undo, and test the proxy connection.
  */
@@ -216,7 +217,7 @@ const ProxyForm = ({ proxy: initialProxyData, onSave, onUndo, onDelete, existing
 
   /**
    * Handles changes to standard input fields and updates the local proxy state.
-   * @param {React.ChangeEvent<HTMLInputElement>} e - The input change event.
+   * @param {Event} e - The input change event.
    */
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
@@ -260,7 +261,7 @@ const ProxyForm = ({ proxy: initialProxyData, onSave, onUndo, onDelete, existing
 
   /**
    * Handles changes to the port input field, ensuring the value is a valid port number.
-   * @param {React.ChangeEvent<HTMLInputElement>} e - The input change event.
+   * @param {Event} e - The input change event.
    */
   const handlePortChange = (e) => {
     const { value } = e.target;

@@ -1,11 +1,12 @@
-import React, { useState, useEffect, Suspense } from 'react';
+import { useState, useEffect } from 'preact/hooks';
+import { Suspense, lazy } from 'preact/compat';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent } from "@/components/ui/card";
 import ProxiesSection from '../../components/options/ProxiesSection';
 import { useThemeIcon } from '../../hooks/useThemeIcon';
 
 // Lazy load the TrafficDashboard to reduce initial bundle size
-const TrafficDashboard = React.lazy(() => import(/* webpackChunkName: "traffic-dashboard" */ '../../components/options/TrafficDashboard'));
+const TrafficDashboard = lazy(() => import(/* webpackChunkName: "traffic-dashboard" */ '../../components/options/TrafficDashboard'));
 
 const OptionsApp = () => {
   const [showTitle, setShowTitle] = useState(false);

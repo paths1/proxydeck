@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect } from 'preact/hooks';
 import * as browser from 'webextension-polyfill';
 import { MESSAGE_ACTIONS } from '../common/constants';
 

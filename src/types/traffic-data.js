@@ -2,7 +2,7 @@
  * Data structure definitions for Recharts-compatible traffic monitoring
  * 
  * This replaces the Chart.js point-based format with Recharts record-based format
- * for better performance and React integration.
+ * for better performance and UI integration.
  */
 
 /**

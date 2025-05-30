@@ -4,7 +4,9 @@
     "paths": {
       "@/*": ["src/*"],
       "@/lib/*": ["src/lib/*"],
-      "@/components/*": ["src/components/*"]
+      "@/components/*": ["src/components/*"],
+      "react": ["./node_modules/preact/compat/"],
+      "react-dom": ["./node_modules/preact/compat/"]
     },
     "jsx": "react-jsx"
   },

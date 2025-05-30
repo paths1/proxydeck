@@ -1,11 +1,6 @@
-import React from 'react';
-import ReactDOM from 'react-dom/client';
+import { render } from 'preact';
 import './index.css';
 import OptionsApp from './pages/options/OptionsApp';
 
-const root = ReactDOM.createRoot(document.getElementById('options-root'));
-root.render(
-  <React.StrictMode>
-    <OptionsApp />
-  </React.StrictMode>
-);
+const container = document.getElementById('options-root');
+render(<OptionsApp />, container);

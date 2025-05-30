@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'preact/hooks';
 import * as browser from 'webextension-polyfill';
 import { Button } from "@/components/ui/button";
 import { MESSAGE_ACTIONS } from '../../common/constants';
