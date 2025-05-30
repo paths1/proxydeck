@@ -36,10 +36,11 @@ jobs:
         run: |
           echo "Checking for build artifacts..."
           ls -la dist/
-          if [ ! -f "dist/proxydeck-*-chrome.zip" ] || [ ! -f "dist/proxydeck-*-firefox.zip" ]; then
+          if ! ls dist/proxydeck-*-chrome.zip 1> /dev/null 2>&1 || ! ls dist/proxydeck-*-firefox.zip 1> /dev/null 2>&1; then
             echo "Error: Build artifacts not found!"
             exit 1
           fi
+          echo "✓ Build artifacts verified"
 
       - name: Create Release
         env:
