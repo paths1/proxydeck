@@ -79,7 +79,7 @@ const ProxyItem = ({ proxy, priorityColor, isExpanded, onToggle, onSave, onUndo,
     opacity: isDragging ? 0.8 : 1,
   };
 
-  const statusColor = priorityColor || 'bg-gray-500';
+  const statusColor = priorityColor || 'bg-muted';
 
   // Prevent click propagation when clicking drag handle
   const handleDragClick = (e) => {
@@ -178,7 +178,7 @@ const ProxyItem = ({ proxy, priorityColor, isExpanded, onToggle, onSave, onUndo,
               {/* AccordionTrigger automatically adds the chevron icon */}
             </div>
           </AccordionTrigger>
-          <AccordionContent className={`transition-colors duration-500 ease-in-out ${isExpanded ? 'bg-muted delay-100' : 'bg-transparent'}`}>
+          <AccordionContent className="transition-colors duration-500 ease-in-out bg-transparent">
             <div className="p-4 pb-4">
               <ProxyForm
                 proxy={proxy}

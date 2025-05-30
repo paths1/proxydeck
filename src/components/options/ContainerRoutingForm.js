@@ -109,8 +109,8 @@ const ContainerRoutingForm = ({ proxy, onChange, originalContainers, dirtyFields
         </Badge>
       )}
     </Label>
-      {isLoadingContainers && <p className="text-sm text-gray-500">Loading containers...</p>}
-      {containerLoadError && <p className="text-sm text-red-500">{containerLoadError}</p>}
+      {isLoadingContainers && <p className="text-sm text-muted-foreground">Loading containers...</p>}
+      {containerLoadError && <p className="text-sm text-destructive">{containerLoadError}</p>}
       
       {!isLoadingContainers && !containerLoadError && availableContainers.length > 0 && (
         availableContainers.map(container => (
@@ -133,7 +133,7 @@ const ContainerRoutingForm = ({ proxy, onChange, originalContainers, dirtyFields
         ))
       )}
       {!isLoadingContainers && !containerLoadError && availableContainers.length === 0 && (
-         <p className="text-sm text-gray-500">No Firefox containers found or the API is not available.</p>
+         <p className="text-sm text-muted-foreground">No Firefox containers found or the API is not available.</p>
       )}
     </div>
   );

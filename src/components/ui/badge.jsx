@@ -3,10 +3,10 @@ import { cn } from "../../lib/utils"
 
 const badgeVariants = {
   default: "bg-primary text-primary-foreground shadow hover:bg-primary/80",
-  success: "bg-green-500 text-white hover:bg-green-600",
-  error: "bg-red-500 text-white hover:bg-red-600",
-  warning: "bg-yellow-500 text-white hover:bg-yellow-600",
-  info: "bg-blue-500 text-white hover:bg-blue-600",
+  success: "bg-chart-2 text-white hover:bg-chart-2/80",
+  error: "bg-destructive text-destructive-foreground hover:bg-destructive/80",
+  warning: "bg-chart-5 text-white hover:bg-chart-5/80",
+  info: "bg-chart-1 text-white hover:bg-chart-1/80",
   secondary: "bg-secondary text-secondary-foreground hover:bg-secondary/80", 
   muted: "bg-muted text-muted-foreground hover:bg-muted/80",
   destructive: "bg-destructive text-destructive-foreground hover:bg-destructive/80",
@@ -133,7 +133,7 @@ const DotBadge = React.forwardRef(({
   variant = "default", 
   size = "md",
   shape = "default",
-  dotColor = "bg-green-500",
+  dotColor = "bg-chart-2",
   dotPosition = "right",
   withAnimation = false,
   children,
