@@ -8,24 +8,30 @@ const ManifestPlugin = require('./webpack-plugins/manifest-plugin');
 
 function getVersionFromGitTag() {
   try {
-    const tag = execSync('git tag -l --sort=-version:refname', { encoding: 'utf8' })
+    const tags = execSync('git tag -l --sort=-version:refname', { encoding: 'utf8' })
       .trim()
-      .split('\n')[0];
+      .split('\n');
     
-    if (tag && tag.match(/^v?\d+\.\d+\.\d+$/)) {
-      const version = tag.replace(/^v/, '');
-      
-      // Update package.json if version differs
-      const packageJsonPath = path.resolve(__dirname, 'package.json');
-      const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
-      
-      if (packageJson.version !== version) {
-        packageJson.version = version;
-        fs.writeFileSync(packageJsonPath, JSON.stringify(packageJson, null, 2) + '\n');
-        console.log(`Updated package.json version to ${version}`);
+    console.log('All tags:', tags.slice(0, 5));
+    
+    // Find the first tag that matches stable version pattern
+    for (const tag of tags) {
+      if (tag && tag.match(/^v?\d+\.\d+\.\d+$/)) {
+        const version = tag.replace(/^v/, '');
+        console.log(`Version from git tag: ${version}`);
+        
+        // Update package.json if version differs
+        const packageJsonPath = path.resolve(__dirname, 'package.json');
+        const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
+        
+        if (packageJson.version !== version) {
+          packageJson.version = version;
+          fs.writeFileSync(packageJsonPath, JSON.stringify(packageJson, null, 2) + '\n');
+          console.log(`Updated package.json version to ${version}`);
+        }
+        
+        return version;
       }
-      
-      return version;
     }
   } catch (e) {
     // Git not available or no tags
