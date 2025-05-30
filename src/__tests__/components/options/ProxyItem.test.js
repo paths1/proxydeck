@@ -1,5 +1,4 @@
-import React from 'react';
-import { render, screen } from '@testing-library/react';
+import { render, screen } from '@testing-library/preact';
 import { DndContext } from '@dnd-kit/core';
 import { SortableContext } from '@dnd-kit/sortable'; // Minimal import for context
 import ProxyItem from '../../../components/options/ProxyItem';
@@ -11,6 +10,7 @@ jest.mock('../../../components/options/ProxyForm', () => {
     return <div data-testid="proxy-form">Proxy Form for {proxy.name}</div>;
   };
 });
+
 
 // Basic mock for useSortable as we are not testing dnd interactions here, just rendering
 jest.mock('@dnd-kit/sortable', () => ({

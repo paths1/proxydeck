@@ -1,5 +1,4 @@
-import React from 'react';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/preact';
 import ProxyPopupItem from '../../../components/popup/ProxyPopupItem';
 
 // Mock webextension-polyfill which is used by the useProxyToggle hook
@@ -8,6 +7,7 @@ jest.mock('webextension-polyfill', () => ({
     sendMessage: jest.fn().mockResolvedValue(undefined),
   },
 }));
+
 
 describe('ProxyPopupItem', () => {
   const mockProxy = {

@@ -1,5 +1,4 @@
-import React from 'react';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/preact';
 import TrafficDashboard from '../../components/options/TrafficDashboard';
 import browser from 'webextension-polyfill';
 import { MESSAGE_ACTIONS } from '../../common/constants';
