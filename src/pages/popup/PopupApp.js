@@ -30,6 +30,40 @@ const PopupApp = () => {
   // Note: Theme detection is now handled by the global theme-detector.js script
   // This approach is consistent with the Options page
 
+  const getAggregationKey = (proxy) => {
+    const protocol = (proxy.proxyType || 'http').toLowerCase()
+      .replace('socks5', 'socks')
+      .replace('https', 'http');
+    return `${protocol}:${proxy.host}:${proxy.port}`;
+  };
+
+  const mapTrafficDataToProxies = (trafficStats, proxiesList) => {
+    const mappedTraffic = {};
+    
+    proxiesList.forEach(proxy => {
+      const aggregationKey = getAggregationKey(proxy);
+      const trafficData = trafficStats?.perProxy?.[aggregationKey];
+      
+      mappedTraffic[proxy.id] = trafficData ? {
+        download: formatTraffic(trafficData.download.current || 0),
+        upload: formatTraffic(trafficData.upload.current || 0),
+        raw: {
+          download: trafficData.download.current || 0,
+          upload: trafficData.upload.current || 0
+        }
+      } : {
+        download: '0 B',
+        upload: '0 B',
+        raw: {
+          download: 0,
+          upload: 0
+        }
+      };
+    });
+    
+    return mappedTraffic;
+  };
+
   // Handler for traffic updates
   const handleTrafficUpdate = useCallback((message) => {
     if (message.action === MESSAGE_ACTIONS.TRAFFIC_UPDATE && message.updates) {
@@ -50,28 +84,20 @@ const PopupApp = () => {
           }
         });
         
-        // Update per-proxy traffic
+        // Update per-proxy traffic using current proxies list
         if (windowData.stats.perProxy) {
           setPerProxyTraffic(prevTraffic => {
-            const updatedTraffic = {...prevTraffic};
-            
-            Object.entries(windowData.stats.perProxy).forEach(([proxyId, stats]) => {
-              updatedTraffic[proxyId] = {
-                download: formatTraffic(stats.download.current || 0),
-                upload: formatTraffic(stats.upload.current || 0),
-                raw: {
-                  download: stats.download.current || 0,
-                  upload: stats.upload.current || 0
-                }
-              };
-            });
-            
-            return updatedTraffic;
+            // Get current proxies from state or fetch them
+            const currentProxiesList = proxies.length > 0 ? proxies : [];
+            if (currentProxiesList.length > 0) {
+              return mapTrafficDataToProxies(windowData.stats, currentProxiesList);
+            }
+            return prevTraffic;
           });
         }
       }
     }
-  }, []);
+  }, [proxies]);
 
   // Set up message listener for traffic updates
   useEffect(() => {
@@ -138,17 +164,7 @@ const PopupApp = () => {
         setProxies(proxiesList);
         
         // Initialize empty traffic data for all proxies
-        const initialTraffic = {};
-        proxiesList.forEach(proxy => {
-          initialTraffic[proxy.id] = {
-            download: '0 B',
-            upload: '0 B',
-            raw: {
-              download: 0,
-              upload: 0
-            }
-          };
-        });
+        const initialTraffic = mapTrafficDataToProxies({}, proxiesList);
         setPerProxyTraffic(initialTraffic);
 
         // Fetch traffic data
@@ -178,22 +194,8 @@ const PopupApp = () => {
           
           // Process per-proxy traffic data
           if (trafficResponse.trafficData.stats?.perProxy) {
-            setPerProxyTraffic(prevTraffic => {
-              const updatedTraffic = {...prevTraffic};
-              
-              Object.entries(trafficResponse.trafficData.stats.perProxy).forEach(([proxyId, stats]) => {
-                updatedTraffic[proxyId] = {
-                  download: formatTraffic(stats.download.current || 0),
-                  upload: formatTraffic(stats.upload.current || 0),
-                  raw: {
-                    download: stats.download.current || 0,
-                    upload: stats.upload.current || 0
-                  }
-                };
-              });
-              
-              return updatedTraffic;
-            });
+            const mappedTraffic = mapTrafficDataToProxies(trafficResponse.trafficData.stats, proxiesList);
+            setPerProxyTraffic(mappedTraffic);
           }
         }
 
