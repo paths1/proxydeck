@@ -16,6 +16,12 @@ jest.mock('recharts', () => ({
   Legend: () => null,
 }));
 
+// Mock TrafficCharts component since it's now lazy loaded
+jest.mock('../../components/options/TrafficCharts', () => ({
+  __esModule: true,
+  default: ({ type }) => <div>{type === 'download' ? 'Download' : 'Upload'}</div>
+}));
+
 describe('TrafficDashboard', () => {
   beforeEach(() => {
     jest.clearAllMocks();

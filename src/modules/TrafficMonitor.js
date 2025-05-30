@@ -1,10 +1,10 @@
 import * as browser from 'webextension-polyfill';
-import { LRUCache } from 'lru-cache';
 import { MESSAGE_ACTIONS, SPECIAL_TRAFFIC_COLORS } from '../common/constants.js';
 import browserCapabilities from '../utils/feature-detection.js';
 import eventManager from './EventManager.js';
 import { ProxyTrafficTracker } from './ProxyTrafficTracker.js';
 import ProxyResolver from './ProxyResolver.js';
+import UnifiedCacheManager from './UnifiedCacheManager.js';
 import {
   createEmptyTrafficData,
   createEmptyDataPoint,
@@ -49,18 +49,10 @@ class TrafficMonitor {
     this.isProcessing = false;
     this.processingInterval = null;
     
-    // Proxy lookup optimization with LRU caches
-    this.proxyLookupCache = new LRUCache({
-      max: 500,
-      ttl: 60000, // 1 minute TTL
-      updateAgeOnGet: true,
-      updateAgeOnHas: true
-    });
-    this.proxyInfoCache = new LRUCache({
-      max: 500,
-      ttl: 60000, // 1 minute TTL
-      updateAgeOnGet: true,
-      updateAgeOnHas: true
+    // Unified cache manager for all caching needs
+    this.cacheManager = new UnifiedCacheManager({
+      maxSize: 1000, // Larger unified cache
+      ttl: 60000 // 1 minute TTL
     });
     
     // Configuration
@@ -75,6 +67,11 @@ class TrafficMonitor {
         '10min': 10
       }
     };
+    
+    // Adaptive processing state
+    this.lastUserActivity = Date.now();
+    this.adaptiveProcessingEnabled = true;
+    this.currentProcessingInterval = this.config.processingIntervalMs;
     
     // Bind methods for event listeners
     this.boundTrackDownload = this.trackDownloadTraffic.bind(this);
@@ -134,8 +131,8 @@ class TrafficMonitor {
     this.proxyResolver.buildProxyKeyMap(enabledProxies, configVersion);
     
     this.currentSample = this.createEmptySample();
-    this.proxyLookupCache.clear();
-    this.proxyInfoCache.clear();
+    this.cacheManager.clear('proxyLookup');
+    this.cacheManager.clear('proxyInfo');
     this.proxyResolver.clearCache();
     
     // Clear request queue to prevent processing stale requests
@@ -188,7 +185,7 @@ class TrafficMonitor {
     }
     
     this.requestQueue = [];
-    this.proxyLookupCache.clear();
+    this.cacheManager.clear('proxyLookup');
   }
 
   handleConfigurationUpdate(newConfig, enabledProxies) {
@@ -295,10 +292,71 @@ class TrafficMonitor {
     }
   }
   
+  calculateAdaptiveInterval() {
+    const now = Date.now();
+    const timeSinceActivity = now - this.lastUserActivity;
+    const queueSize = this.requestQueue.length;
+    
+    // User is idle if no activity for 30 seconds
+    const userIdle = timeSinceActivity > 30000;
+    
+    // Adaptive intervals based on queue size and user activity
+    if (userIdle && queueSize < 50) {
+      // Very slow when user is idle with low traffic
+      return Math.min(1000, this.config.processingIntervalMs * 40); // Max 1 second
+    } else if (queueSize > 500) {
+      // Very fast when queue is getting full
+      return this.config.processingIntervalMs; // 25ms
+    } else if (queueSize > 200) {
+      // Fast for moderate queue
+      return this.config.processingIntervalMs * 2; // 50ms
+    } else if (queueSize > 100) {
+      // Moderate speed
+      return this.config.processingIntervalMs * 4; // 100ms
+    } else if (userIdle) {
+      // Slow when idle with minimal traffic
+      return Math.min(500, this.config.processingIntervalMs * 20); // 500ms
+    } else {
+      // Default moderate speed for active user with low traffic
+      return this.config.processingIntervalMs * 8; // 200ms
+    }
+  }
+  
+  updateProcessingInterval() {
+    if (!this.adaptiveProcessingEnabled) return;
+    
+    const newInterval = this.calculateAdaptiveInterval();
+    
+    // Only update if interval changed significantly (more than 20% difference)
+    if (Math.abs(newInterval - this.currentProcessingInterval) / this.currentProcessingInterval > 0.2) {
+      this.currentProcessingInterval = newInterval;
+      
+      // Restart processing with new interval
+      if (this.processingInterval) {
+        this.stopContinuousProcessing();
+        this.startContinuousProcessing();
+      }
+    }
+  }
+  
   startContinuousProcessing() {
-    this.processingInterval = setInterval(() => {
+    if (this.processingInterval) return;
+    
+    const processAndAdapt = () => {
       this.processRequestBatch();
-    }, this.config.processingIntervalMs);
+      
+      // Update interval based on current conditions
+      if (this.adaptiveProcessingEnabled) {
+        this.updateProcessingInterval();
+      }
+    };
+    
+    // Use adaptive interval if enabled
+    const interval = this.adaptiveProcessingEnabled 
+      ? this.currentProcessingInterval 
+      : this.config.processingIntervalMs;
+    
+    this.processingInterval = setInterval(processAndAdapt, interval);
   }
   
   stopContinuousProcessing() {
@@ -310,6 +368,9 @@ class TrafficMonitor {
   
   trackDownloadTraffic(details) {
     if (!details.url) return;
+    
+    // Update last user activity timestamp
+    this.lastUserActivity = Date.now();
     
     // Check queue size limit
     if (this.requestQueue.length >= this.config.maxQueueSize) {
@@ -323,6 +384,9 @@ class TrafficMonitor {
   
   trackUploadTraffic(details) {
     if (!details.url || !details.requestBody) return;
+    
+    // Update last user activity timestamp
+    this.lastUserActivity = Date.now();
     
     const size = this.calculateUploadSize(details);
     if (size === 0) return;
@@ -436,7 +500,7 @@ class TrafficMonitor {
     const aggregationKey = `${normalizedType}:${host}:${port}`;
     
     // Check cache first
-    const cached = this.proxyInfoCache.get(aggregationKey);
+    const cached = this.cacheManager.get('proxyInfo', aggregationKey);
     if (cached) {
       return cached;
     }
@@ -460,7 +524,7 @@ class TrafficMonitor {
     }
     
     // Cache the result
-    this.proxyInfoCache.set(aggregationKey, resolution);
+    this.cacheManager.set('proxyInfo', aggregationKey, resolution);
     
     return resolution;
   }
@@ -471,7 +535,7 @@ class TrafficMonitor {
     
     // Check cache first (only if not filtering candidates)
     if (!candidateProxies) {
-      const cached = this.proxyLookupCache.get(cacheKey);
+      const cached = this.cacheManager.get('proxyLookup', cacheKey);
       if (cached !== undefined) {
         return cached;
       }
@@ -527,8 +591,8 @@ class TrafficMonitor {
   }
   
   cacheProxyLookup(key, proxyId) {
-    // LRU cache handles size limits and TTL automatically
-    this.proxyLookupCache.set(key, proxyId);
+    // Unified cache handles size limits and TTL automatically
+    this.cacheManager.set('proxyLookup', key, proxyId);
   }
   
   getAggregationKeysFromDataPoint(dataPoint) {

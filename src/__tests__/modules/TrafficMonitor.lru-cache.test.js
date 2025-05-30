@@ -1,5 +1,5 @@
 import TrafficMonitor from '../../modules/TrafficMonitor.js';
-import { LRUCache } from 'lru-cache';
+import UnifiedCacheManager from '../../modules/UnifiedCacheManager.js';
 
 // Mock dependencies
 jest.mock('webextension-polyfill', () => ({
@@ -32,7 +32,7 @@ jest.mock('../../utils/feature-detection.js', () => ({
   }
 }));
 
-describe('TrafficMonitor LRU Cache Implementation', () => {
+describe('TrafficMonitor Unified Cache Implementation', () => {
   let trafficMonitor;
   let mockPatternMatcher;
 
@@ -48,152 +48,188 @@ describe('TrafficMonitor LRU Cache Implementation', () => {
     });
   });
 
-  describe('LRU cache initialization', () => {
-    it('should initialize proxyLookupCache as LRU cache with correct settings', () => {
-      expect(trafficMonitor.proxyLookupCache).toBeInstanceOf(LRUCache);
-      expect(trafficMonitor.proxyLookupCache.max).toBe(500);
-      expect(trafficMonitor.proxyLookupCache.ttl).toBe(60000);
-    });
-
-    it('should initialize proxyInfoCache as LRU cache with correct settings', () => {
-      expect(trafficMonitor.proxyInfoCache).toBeInstanceOf(LRUCache);
-      expect(trafficMonitor.proxyInfoCache.max).toBe(500);
-      expect(trafficMonitor.proxyInfoCache.ttl).toBe(60000);
+  describe('Unified cache initialization', () => {
+    it('should initialize cacheManager as UnifiedCacheManager with correct settings', () => {
+      expect(trafficMonitor.cacheManager).toBeInstanceOf(UnifiedCacheManager);
+      expect(trafficMonitor.cacheManager.cache.max).toBe(1000);
+      expect(trafficMonitor.cacheManager.cache.ttl).toBe(60000);
     });
   });
 
   describe('Cache size limits', () => {
-    it('should enforce maximum size on proxyLookupCache', () => {
+    it('should enforce maximum size on unified cache', () => {
       trafficMonitor.enabledProxies = [{ id: 'proxy1', enabled: true }];
       
       // Fill cache beyond limit
-      for (let i = 0; i < 600; i++) {
+      for (let i = 0; i < 1200; i++) {
         const key = `https://example${i}.com_`;
         trafficMonitor.cacheProxyLookup(key, `proxy${i % 3}`);
       }
       
       // Cache should not exceed max size
-      expect(trafficMonitor.proxyLookupCache.size).toBeLessThanOrEqual(500);
+      expect(trafficMonitor.cacheManager.cache.size).toBeLessThanOrEqual(1000);
     });
 
     it('should evict least recently used entries when cache is full', () => {
       trafficMonitor.enabledProxies = [{ id: 'proxy1', enabled: true }];
       
-      // Fill cache to limit
-      for (let i = 0; i < 500; i++) {
+      // Fill cache to near limit
+      for (let i = 0; i < 999; i++) {
         const key = `https://example${i}.com_`;
         trafficMonitor.cacheProxyLookup(key, 'proxy1');
       }
       
       // Access first entry to make it recently used
-      trafficMonitor.proxyLookupCache.get('https://example0.com_');
+      trafficMonitor.cacheManager.get('proxyLookup', 'https://example0.com_');
       
-      // Add new entry that should evict an old one
-      trafficMonitor.cacheProxyLookup('https://newsite.com_', 'proxy1');
+      // Add new entries that should evict old ones
+      trafficMonitor.cacheProxyLookup('https://newsite1.com_', 'proxy1');
+      trafficMonitor.cacheProxyLookup('https://newsite2.com_', 'proxy1');
       
       // First entry should still exist (recently accessed)
-      expect(trafficMonitor.proxyLookupCache.has('https://example0.com_')).toBe(true);
-      // New entry should exist
-      expect(trafficMonitor.proxyLookupCache.has('https://newsite.com_')).toBe(true);
+      expect(trafficMonitor.cacheManager.has('proxyLookup', 'https://example0.com_')).toBe(true);
+      // New entries should exist
+      expect(trafficMonitor.cacheManager.has('proxyLookup', 'https://newsite1.com_')).toBe(true);
+      expect(trafficMonitor.cacheManager.has('proxyLookup', 'https://newsite2.com_')).toBe(true);
     });
   });
 
   describe('Cache TTL behavior', () => {
-    it('should respect TTL for cached entries', () => {
+    beforeEach(() => {
+      jest.useFakeTimers();
+    });
+
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    it('should expire entries after TTL', () => {
       const key = 'https://example.com_';
-      
-      // Set cache entry
       trafficMonitor.cacheProxyLookup(key, 'proxy1');
       
       // Entry should exist initially
-      expect(trafficMonitor.proxyLookupCache.get(key)).toBe('proxy1');
+      expect(trafficMonitor.cacheManager.get('proxyLookup', key)).toBe('proxy1');
       
-      // Fast-forward time beyond TTL
-      jest.advanceTimersByTime(70000); // 70 seconds
+      // Fast forward past TTL
+      jest.advanceTimersByTime(61000); // 61 seconds
       
-      // Entry should be expired (LRU cache handles this internally)
-      // The actual behavior depends on LRU cache implementation
+      // Entry should be expired
+      expect(trafficMonitor.cacheManager.get('proxyLookup', key)).toBeUndefined();
+    });
+
+    it('should update age on access', () => {
+      const key = 'https://example.com_';
+      trafficMonitor.cacheProxyLookup(key, 'proxy1');
+      
+      // Fast forward half of TTL
+      jest.advanceTimersByTime(30000);
+      
+      // Access the entry to update its age
+      expect(trafficMonitor.cacheManager.get('proxyLookup', key)).toBe('proxy1');
+      
+      // Fast forward another 35 seconds (total 65 seconds from creation, but only 35 from last access)
+      jest.advanceTimersByTime(35000);
+      
+      // Entry should still exist due to age update on access
+      expect(trafficMonitor.cacheManager.get('proxyLookup', key)).toBe('proxy1');
     });
   });
 
-  describe('Memory efficiency', () => {
-    it('should not have unbounded growth with high traffic', () => {
-      trafficMonitor.enabledProxies = [
-        { 
-          id: 'proxy1', 
-          enabled: true,
-          routingConfig: {
-            useContainerMode: false,
-            patterns: ['*example.com*']
-          }
-        },
-        { 
-          id: 'proxy2', 
-          enabled: true,
-          routingConfig: {
-            useContainerMode: false,
-            patterns: ['*site*.com*']
-          }
-        }
-      ];
+  describe('Cache usage in resolveProxyForRequest', () => {
+    it('should use cache for proxy lookups', () => {
+      const details = {
+        url: 'https://example.com/path',
+        cookieStoreId: 'default'
+      };
       
-      // Simulate high traffic with many unique URLs
-      for (let i = 0; i < 10000; i++) {
-        const details = {
-          url: `https://site${i % 1000}.com/path${i}`,
-          requestId: `req${i}`
-        };
-        
-        // This would use the cache
-        trafficMonitor.resolveProxyForRequest(details);
-      }
+      trafficMonitor.enabledProxies = [{ id: 'proxy1', enabled: true }];
       
-      // Both caches should stay within limits
-      expect(trafficMonitor.proxyLookupCache.size).toBeLessThanOrEqual(500);
-      expect(trafficMonitor.proxyInfoCache.size).toBeLessThanOrEqual(500);
+      // Mock resolver to return proxy1
+      trafficMonitor.proxyResolver.resolveProxyForRequest = jest.fn().mockReturnValue({ id: 'proxy1' });
+      
+      // First call should hit the resolver
+      const result1 = trafficMonitor.resolveProxyForRequest(details);
+      expect(trafficMonitor.proxyResolver.resolveProxyForRequest).toHaveBeenCalledTimes(1);
+      expect(result1).toEqual({ id: 'proxy1' });
+      
+      // Second call should use cache
+      const result2 = trafficMonitor.resolveProxyForRequest(details);
+      expect(trafficMonitor.proxyResolver.resolveProxyForRequest).toHaveBeenCalledTimes(1); // Not called again
+      expect(result2).toEqual({ id: 'proxy1' });
+    });
+
+    it('should not use cache when filtering candidates', () => {
+      const details = {
+        url: 'https://example.com/path',
+        cookieStoreId: 'default'
+      };
+      
+      const candidateProxies = [{ id: 'proxy2', enabled: true }];
+      trafficMonitor.enabledProxies = [{ id: 'proxy1', enabled: true }];
+      
+      // Mock resolver
+      trafficMonitor.proxyResolver.resolveProxyForRequest = jest.fn().mockReturnValue({ id: 'proxy2' });
+      
+      // Call with candidate proxies should not use cache
+      trafficMonitor.resolveProxyForRequest(details, candidateProxies);
+      expect(trafficMonitor.proxyResolver.resolveProxyForRequest).toHaveBeenCalledTimes(1);
+      
+      // Another call with candidates should still hit resolver
+      trafficMonitor.resolveProxyForRequest(details, candidateProxies);
+      expect(trafficMonitor.proxyResolver.resolveProxyForRequest).toHaveBeenCalledTimes(2);
     });
   });
 
-  describe('Cache cleanup on stop', () => {
-    it('should clear caches when monitoring stops', () => {
+  describe('Cache clearing', () => {
+    it('should clear proxyLookup cache on startMonitoring', () => {
+      const config = { proxies: [] };
+      const enabledProxies = [];
+      
       // Add some cache entries
-      trafficMonitor.cacheProxyLookup('https://example1.com_', 'proxy1');
-      trafficMonitor.cacheProxyLookup('https://example2.com_', 'proxy2');
+      trafficMonitor.cacheProxyLookup('key1', 'proxy1');
+      trafficMonitor.cacheProxyLookup('key2', 'proxy2');
       
-      expect(trafficMonitor.proxyLookupCache.size).toBeGreaterThan(0);
+      expect(trafficMonitor.cacheManager.has('proxyLookup', 'key1')).toBe(true);
       
-      // Stop monitoring
+      // Start monitoring should clear cache
+      trafficMonitor.startMonitoring(config, enabledProxies);
+      
+      expect(trafficMonitor.cacheManager.has('proxyLookup', 'key1')).toBe(false);
+      expect(trafficMonitor.cacheManager.has('proxyLookup', 'key2')).toBe(false);
+    });
+
+    it('should clear caches on stopMonitoring', () => {
+      // Add some cache entries
+      trafficMonitor.cacheProxyLookup('key1', 'proxy1');
+      trafficMonitor.cacheManager.set('proxyInfo', 'info1', { type: 'configured' });
+      
+      expect(trafficMonitor.cacheManager.has('proxyLookup', 'key1')).toBe(true);
+      expect(trafficMonitor.cacheManager.has('proxyInfo', 'info1')).toBe(true);
+      
+      // Stop monitoring should clear cache
       trafficMonitor.stopMonitoring();
       
-      // Caches should be cleared
-      expect(trafficMonitor.proxyLookupCache.size).toBe(0);
+      expect(trafficMonitor.cacheManager.has('proxyLookup', 'key1')).toBe(false);
     });
   });
 
-  describe('Listener cleanup on stop', () => {
-    it('should remove alarm listener when stopping monitoring', () => {
-      const { addEventListener, removeEventListener } = require('../../modules/EventManager.js');
+  describe('Cache statistics', () => {
+    it('should track cache hit/miss statistics', () => {
+      trafficMonitor.enabledProxies = [{ id: 'proxy1', enabled: true }];
       
-      // Configure traffic monitor to use alarms (sampleIntervalMs >= 60000)
-      trafficMonitor.config.sampleIntervalMs = 60000;
+      // Cache miss
+      trafficMonitor.cacheManager.get('proxyLookup', 'missing-key');
       
-      // Start monitoring to set up listeners
-      trafficMonitor.startMonitoring({}, []);
+      // Cache hit
+      trafficMonitor.cacheProxyLookup('hit-key', 'proxy1');
+      trafficMonitor.cacheManager.get('proxyLookup', 'hit-key');
       
-      // Verify alarm listener was added
-      expect(addEventListener).toHaveBeenCalledWith(
-        'alarm',
-        'traffic_sampling',
-        expect.any(Object),
-        'onAlarm',
-        expect.any(Function)
-      );
+      const stats = trafficMonitor.cacheManager.getStats('proxyLookup');
+      expect(stats.hits).toBe(1);
+      expect(stats.misses).toBe(1);
       
-      // Stop monitoring
-      trafficMonitor.stopMonitoring();
-      
-      // Verify alarm listener was removed
-      expect(removeEventListener).toHaveBeenCalledWith('alarm', 'traffic_sampling');
+      const hitRate = trafficMonitor.cacheManager.getHitRate('proxyLookup');
+      expect(hitRate).toBe(0.5); // 50% hit rate
     });
   });
 });

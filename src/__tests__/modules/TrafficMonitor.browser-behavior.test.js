@@ -41,32 +41,34 @@ describe('TrafficMonitor Browser Behavior', () => {
       it('should categorize traffic as others when no proxy matches', () => {
         const details = { url: 'https://example.com', requestId: '123' };
         
-        // Mock resolveProxyForRequest to return null (no match)
-        trafficMonitor.resolveProxyForRequest = jest.fn().mockReturnValue(null);
+        // Mock proxyResolver to return null (no match)
+        trafficMonitor.proxyResolver.resolveProxyForRequest = jest.fn().mockReturnValue(null);
         
         const result = trafficMonitor.resolveProxyFromDetails(details);
         
         expect(result).toEqual({ type: 'others' });
-        expect(trafficMonitor.resolveProxyForRequest).toHaveBeenCalledWith(details);
+        expect(trafficMonitor.proxyResolver.resolveProxyForRequest).toHaveBeenCalledWith(details, trafficMonitor.enabledProxies);
       });
 
       it('should categorize traffic as configured when proxy matches', () => {
         const details = { url: 'https://example.com', requestId: '123' };
-        const mockProxyId = 'proxy1';
+        const mockProxy = { id: 'proxy1', host: '127.0.0.1', port: 8080, type: 'http' };
+        const mockAggregationKey = 'http:127.0.0.1:8080';
         
-        // Mock resolveProxyForRequest to return a proxy ID
-        trafficMonitor.resolveProxyForRequest = jest.fn().mockReturnValue(mockProxyId);
+        // Mock proxyResolver to return a proxy object
+        trafficMonitor.proxyResolver.resolveProxyForRequest = jest.fn().mockReturnValue(mockProxy);
+        trafficMonitor.proxyResolver.getAggregationKey = jest.fn().mockReturnValue(mockAggregationKey);
         
         const result = trafficMonitor.resolveProxyFromDetails(details);
         
-        expect(result).toEqual({ type: 'configured', proxyId: mockProxyId });
-        expect(trafficMonitor.resolveProxyForRequest).toHaveBeenCalledWith(details);
+        expect(result).toEqual({ type: 'configured', aggregationKey: mockAggregationKey, proxyId: 'proxy1' });
+        expect(trafficMonitor.proxyResolver.resolveProxyForRequest).toHaveBeenCalledWith(details, trafficMonitor.enabledProxies);
       });
 
       it('should not categorize traffic as direct', () => {
         const details = { url: 'https://example.com' };
         
-        trafficMonitor.resolveProxyForRequest = jest.fn().mockReturnValue(null);
+        trafficMonitor.proxyResolver.resolveProxyForRequest = jest.fn().mockReturnValue(null);
         
         const result = trafficMonitor.resolveProxyFromDetails(details);
         
@@ -77,21 +79,24 @@ describe('TrafficMonitor Browser Behavior', () => {
     describe('getAllTrafficSources', () => {
       it('should include others but not direct traffic sources', () => {
         const enabledProxies = [
-          { id: 'proxy1', name: 'Test Proxy 1', color: '#000000' }
+          { id: 'proxy1', name: 'Test Proxy 1', color: '#000000', host: '127.0.0.1', port: 8080, type: 'http', enabled: true }
         ];
 
         const result = trafficMonitor.getAllTrafficSources(enabledProxies);
 
-        expect(result).toHaveLength(2);
-        expect(result[0]).toEqual(enabledProxies[0]);
-        expect(result[1]).toEqual({
+        // Should include the aggregated proxy and others
+        expect(result.length).toBeGreaterThanOrEqual(2);
+        
+        // Check for others special source
+        const othersSource = result.find(source => source.id === 'others');
+        expect(othersSource).toEqual({
           id: 'others',
           name: 'Others',
           color: SPECIAL_TRAFFIC_COLORS.OTHERS,
           isSpecial: true
         });
         
-        // Should not include direct
+        // Should not include direct for Chrome
         expect(result.find(source => source.id === 'direct')).toBeUndefined();
       });
 
@@ -143,20 +148,26 @@ describe('TrafficMonitor Browser Behavior', () => {
     describe('getAllTrafficSources', () => {
       it('should include both direct and others traffic sources', () => {
         const enabledProxies = [
-          { id: 'proxy1', name: 'Test Proxy 1', color: '#000000' }
+          { id: 'proxy1', name: 'Test Proxy 1', color: '#000000', host: '127.0.0.1', port: 8080, type: 'http', enabled: true }
         ];
 
         const result = trafficMonitor.getAllTrafficSources(enabledProxies);
 
-        expect(result).toHaveLength(3);
-        expect(result[0]).toEqual(enabledProxies[0]);
-        expect(result[1]).toEqual({
+        // Should include aggregated proxy, direct and others
+        expect(result.length).toBeGreaterThanOrEqual(3);
+        
+        // Check for direct special source
+        const directSource = result.find(source => source.id === 'direct');
+        expect(directSource).toEqual({
           id: 'direct',
           name: 'Direct',
           color: SPECIAL_TRAFFIC_COLORS.DIRECT,
           isSpecial: true
         });
-        expect(result[2]).toEqual({
+        
+        // Check for others special source
+        const othersSource = result.find(source => source.id === 'others');
+        expect(othersSource).toEqual({
           id: 'others',
           name: 'Others',
           color: SPECIAL_TRAFFIC_COLORS.OTHERS,

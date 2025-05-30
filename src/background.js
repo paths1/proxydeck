@@ -114,9 +114,8 @@ browser.runtime.onSuspend.addListener(() => {
   // Clean up event manager listeners
   eventManager.cleanupAllListeners();
   
-  // Clear proxy manager caches
-  proxyManager.proxyLookupCache?.clear();
-  proxyManager.proxyInfoCache?.clear();
+  // Clear proxy manager caches if they exist
+  // Note: caches are now managed by TrafficMonitor's UnifiedCacheManager
 });
 
 // Handle extension updates gracefully
