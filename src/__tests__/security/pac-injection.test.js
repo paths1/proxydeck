@@ -35,11 +35,13 @@ describe('PAC Script Security Tests', () => {
       
       expect(pacScript).not.toContain('alert("XSS")');
       expect(pacScript).toContain('var proxyConfigurations = ');
-      expect(pacScript).toContain(JSON.stringify([{
+      // Verify the pattern is safely embedded in the JSON configuration
+      const expectedConfig = [{
         patterns: [maliciousPattern],
         proxyString: 'SOCKS5 proxy.test.com:8080',
         priority: 1
-      }]));
+      }];
+      expect(pacScript).toContain(JSON.stringify(expectedConfig));
     });
 
     it('should prevent JavaScript injection via backslash escapes', () => {
@@ -84,13 +86,12 @@ describe('PAC Script Security Tests', () => {
       
       // The pattern should be safely JSON-escaped in the data, not executable
       expect(pacScript).toContain('var proxyConfigurations = ');
-      expect(pacScript).toContain(JSON.stringify(maliciousPattern));
       
       // Verify the PAC script itself doesn't contain unescaped script tags
       const configMatch = pacScript.match(/var proxyConfigurations = (.+?);/);
       expect(configMatch).toBeTruthy();
       const configData = JSON.parse(configMatch[1]);
-      expect(configData[0].patterns[0]).toBe(maliciousPattern);
+      expect(configData[0].patterns[0]).toEqual(maliciousPattern);
     });
 
     it('should prevent template literal injection', () => {
@@ -102,13 +103,12 @@ describe('PAC Script Security Tests', () => {
       
       // The pattern should be safely JSON-escaped in the data, not executable
       expect(pacScript).toContain('var proxyConfigurations = ');
-      expect(pacScript).toContain(JSON.stringify(maliciousPattern));
       
       // Verify the pattern is properly stored in the JSON data
       const configMatch = pacScript.match(/var proxyConfigurations = (.+?);/);
       expect(configMatch).toBeTruthy();
       const configData = JSON.parse(configMatch[1]);
-      expect(configData[0].patterns[0]).toBe(maliciousPattern);
+      expect(configData[0].patterns[0]).toEqual(maliciousPattern);
     });
 
     it('should handle complex regex patterns safely', () => {
@@ -118,8 +118,11 @@ describe('PAC Script Security Tests', () => {
       
       const pacScript = proxyManager.generatePacScript();
       
-      expect(pacScript).toContain('var proxyConfigurations = ');
-      expect(pacScript).toContain(JSON.stringify(complexPattern));
+      // Verify the complex pattern is properly escaped and stored
+      const configMatch = pacScript.match(/var proxyConfigurations = (.+?);/);
+      expect(configMatch).toBeTruthy();
+      const configData = JSON.parse(configMatch[1]);
+      expect(configData[0].patterns[0]).toEqual(complexPattern);
     });
 
     it('should handle Unicode characters safely', () => {
@@ -129,8 +132,11 @@ describe('PAC Script Security Tests', () => {
       
       const pacScript = proxyManager.generatePacScript();
       
-      expect(pacScript).toContain('var proxyConfigurations = ');
-      expect(pacScript).toContain(JSON.stringify(unicodePattern));
+      // Verify the unicode pattern is properly escaped and stored
+      const configMatch = pacScript.match(/var proxyConfigurations = (.+?);/);
+      expect(configMatch).toBeTruthy();
+      const configData = JSON.parse(configMatch[1]);
+      expect(configData[0].patterns[0]).toEqual(unicodePattern);
     });
 
     it('should prevent injection through proxy credentials', () => {
@@ -205,7 +211,7 @@ describe('PAC Script Security Tests', () => {
       expect(pacScript).toContain('function FindProxyForURL(url, host)');
       expect(pacScript).toContain('var proxyConfigurations = ');
       expect(pacScript).toContain('function testPatternMatch(hostname, pattern)');
-      expect(pacScript).toContain('function findMatchingProxies(hostname, ipAddress)');
+      expect(pacScript).toContain('function findProxyForHostname(hostname)');
       
       expect(() => {
         new Function(pacScript + '; return FindProxyForURL;')();
@@ -254,6 +260,45 @@ describe('PAC Script Security Tests', () => {
       
       expect(pacScript).not.toContain('container.proxy.com');
       expect(pacScript).toContain('pattern.proxy.com');
+    });
+
+    it('should match IP address pattern ^39\\.1\\..* against host 39.1.10.30', () => {
+      const proxy = {
+        id: 'ip-proxy',
+        name: 'IP Proxy',
+        host: 'proxy.test.com',
+        port: 8080,
+        enabled: true,
+        priority: 1,
+        routingConfig: {
+          useContainerMode: false,
+          patterns: [{ value: '^39\\.1\\..*' }]
+        }
+      };
+      
+      proxyManager.enabledProxies = [proxy];
+      
+      const pacScript = proxyManager.generatePacScript();
+      
+      // Create a test function to execute the PAC script
+      const pacFunction = new Function(pacScript + '; return FindProxyForURL;')();
+      
+      // Test that the pattern correctly matches the IP address
+      const result = pacFunction('http://39.1.10.30/test', '39.1.10.30');
+      expect(result).toBe('SOCKS5 proxy.test.com:8080');
+      
+      // Test various IPs in the 39.1.x.x range
+      expect(pacFunction('http://39.1.0.1/test', '39.1.0.1')).toBe('SOCKS5 proxy.test.com:8080');
+      expect(pacFunction('http://39.1.255.255/test', '39.1.255.255')).toBe('SOCKS5 proxy.test.com:8080');
+      
+      // Test that non-matching IPs return DIRECT
+      expect(pacFunction('http://40.1.10.30/test', '40.1.10.30')).toBe('DIRECT');
+      expect(pacFunction('http://38.1.10.30/test', '38.1.10.30')).toBe('DIRECT');
+      expect(pacFunction('http://39.2.10.30/test', '39.2.10.30')).toBe('DIRECT');
+      
+      // Test that the pattern doesn't match partial numbers
+      expect(pacFunction('http://139.1.10.30/test', '139.1.10.30')).toBe('DIRECT');
+      expect(pacFunction('http://39.11.10.30/test', '39.11.10.30')).toBe('DIRECT');
     });
   });
 

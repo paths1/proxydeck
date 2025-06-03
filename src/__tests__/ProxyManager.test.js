@@ -786,7 +786,9 @@ describe('ProxyManager', () => {
       expect(pacScript).toContain('function FindProxyForURL');
       expect(pacScript).toContain('var proxyConfigurations = ');
       expect(pacScript).toContain('function testPatternMatch');
-      expect(pacScript).toContain('function findMatchingProxies');
+      expect(pacScript).toContain('function findProxyForHostname');
+      expect(pacScript).toContain('var lruCache = ');
+      expect(pacScript).toContain('var regexCache = ');
       expect(typeof pacScript).toBe('string');
       expect(pacScript.length).toBeGreaterThan(50);
     });
@@ -851,7 +853,11 @@ describe('ProxyManager', () => {
       expect(parsedConfig[0]).toHaveProperty('patterns');
       expect(parsedConfig[0]).toHaveProperty('proxyString');
       expect(parsedConfig[0]).toHaveProperty('priority');
-      expect(parsedConfig[0].patterns).toEqual(['example\\.com', 'test\\.org']);
+      
+      // Patterns are now plain strings (no double escaping)
+      expect(parsedConfig[0].patterns).toHaveLength(2);
+      expect(parsedConfig[0].patterns[0]).toEqual('example\\.com');
+      expect(parsedConfig[0].patterns[1]).toEqual('test\\.org');
     });
     
     it('should generate valid JavaScript that can be parsed', () => {
@@ -884,6 +890,120 @@ describe('ProxyManager', () => {
       
       expect(pacScript).toContain('return "DIRECT"');
       expect(pacScript).not.toContain('var proxyConfigurations = ');
+    });
+    
+    it('should include optimizations like early exits and caching', () => {
+      proxyManager.enabledProxies = [
+        {
+          id: 'test_proxy',
+          enabled: true,
+          host: 'proxy.example.com',
+          port: 8080,
+          priority: 1,
+          routingConfig: {
+            useContainerMode: false,
+            patterns: ['example\\.com']
+          }
+        }
+      ];
+      
+      const pacScript = proxyManager.generatePacScript();
+      
+      // Check for early exits
+      expect(pacScript).toContain('localhost');
+      expect(pacScript).toContain('file:');
+      expect(pacScript).toContain('chrome:');
+      
+      // Check for LRU cache implementation
+      expect(pacScript).toContain('lruCache.get');
+      expect(pacScript).toContain('lruCache.set');
+      
+      // Check that dnsResolve is NOT used
+      expect(pacScript).not.toContain('dnsResolve');
+    });
+    
+    it('should pre-sort configurations by priority', () => {
+      proxyManager.enabledProxies = [
+        {
+          id: 'proxy_3',
+          enabled: true,
+          host: 'proxy3.example.com',
+          port: 8083,
+          priority: 3,
+          routingConfig: {
+            useContainerMode: false,
+            patterns: ['.*']
+          }
+        },
+        {
+          id: 'proxy_1',
+          enabled: true,
+          host: 'proxy1.example.com',
+          port: 8081,
+          priority: 1,
+          routingConfig: {
+            useContainerMode: false,
+            patterns: ['example\\.com']
+          }
+        },
+        {
+          id: 'proxy_2',
+          enabled: true,
+          host: 'proxy2.example.com',
+          port: 8082,
+          priority: 2,
+          routingConfig: {
+            useContainerMode: false,
+            patterns: ['test\\.com']
+          }
+        }
+      ];
+      
+      const pacScript = proxyManager.generatePacScript();
+      
+      // Extract the proxyConfigurations from the PAC script
+      const configMatch = pacScript.match(/var proxyConfigurations = (.+?);/);
+      expect(configMatch).toBeTruthy();
+      
+      const parsedConfig = JSON.parse(configMatch[1]);
+      
+      // Verify configurations are sorted by priority
+      expect(parsedConfig[0].priority).toBe(1);
+      expect(parsedConfig[1].priority).toBe(2);
+      expect(parsedConfig[2].priority).toBe(3);
+    });
+    
+    it('should treat all patterns as regex', () => {
+      proxyManager.enabledProxies = [
+        {
+          id: 'test_proxy',
+          enabled: true,
+          host: 'proxy.example.com',
+          port: 8080,
+          priority: 1,
+          routingConfig: {
+            useContainerMode: false,
+            patterns: ['*', 'example.com', 'test\\..*\\.com']
+          }
+        }
+      ];
+      
+      const pacScript = proxyManager.generatePacScript();
+      
+      // Extract the proxyConfigurations from the PAC script
+      const configMatch = pacScript.match(/var proxyConfigurations = (.+?);/);
+      expect(configMatch).toBeTruthy();
+      
+      const parsedConfig = JSON.parse(configMatch[1]);
+      
+      // Verify all patterns are treated as regex
+      const patterns = parsedConfig[0].patterns;
+      expect(patterns).toHaveLength(3);
+      
+      // All patterns should be plain strings (no double escaping)
+      expect(patterns[0]).toEqual('*');
+      expect(patterns[1]).toEqual('example.com');
+      expect(patterns[2]).toEqual('test\\..*\\.com');
     });
   });
 

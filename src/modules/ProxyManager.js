@@ -474,62 +474,167 @@ class ProxyManager {
           priority: proxy.priority
         };
       })
-      .filter(config => config.patterns.length > 0);
+      .filter(config => config.patterns.length > 0)
+      .sort((a, b) => a.priority - b.priority); // Pre-sort by priority
     
     const configData = JSON.stringify(proxyConfigurations);
     
     this.pacScript = `
       var proxyConfigurations = ${configData};
+      var regexCache = {};
       
-      function testPatternMatch(hostname, pattern) {
-        try {
-          var regex = new RegExp(pattern, "i");
-          return regex.test(hostname);
-        } catch (e) {
-          console.error("Invalid regex pattern:", pattern);
-          return false;
+      // Efficient O(1) LRU cache using hash table + doubly linked list
+      var lruCache = {
+        cache: {},
+        head: null,
+        tail: null,
+        size: 0,
+        maxSize: 50,
+        
+        get: function(hostname) {
+          var node = this.cache[hostname];
+          if (!node) return null;
+          
+          // Move to head (most recently used)
+          this._moveToHead(node);
+          return node.proxy;
+        },
+        
+        set: function(hostname, proxy) {
+          var node = this.cache[hostname];
+          
+          if (node) {
+            // Update existing node
+            node.proxy = proxy;
+            this._moveToHead(node);
+          } else {
+            // Create new node
+            var newNode = {
+              hostname: hostname,
+              proxy: proxy,
+              prev: null,
+              next: null
+            };
+            
+            this.cache[hostname] = newNode;
+            this._addToHead(newNode);
+            this.size++;
+            
+            // Evict tail if over capacity
+            if (this.size > this.maxSize) {
+              var tail = this._removeTail();
+              delete this.cache[tail.hostname];
+              this.size--;
+            }
+          }
+        },
+        
+        _moveToHead: function(node) {
+          this._removeNode(node);
+          this._addToHead(node);
+        },
+        
+        _removeNode: function(node) {
+          if (node.prev) {
+            node.prev.next = node.next;
+          } else {
+            this.head = node.next;
+          }
+          
+          if (node.next) {
+            node.next.prev = node.prev;
+          } else {
+            this.tail = node.prev;
+          }
+        },
+        
+        _addToHead: function(node) {
+          node.prev = null;
+          node.next = this.head;
+          
+          if (this.head) {
+            this.head.prev = node;
+          }
+          
+          this.head = node;
+          
+          if (!this.tail) {
+            this.tail = node;
+          }
+        },
+        
+        _removeTail: function() {
+          var tail = this.tail;
+          this._removeNode(tail);
+          return tail;
         }
+      };
+      
+      function getRegex(pattern) {
+        if (!regexCache[pattern]) {
+          try {
+            regexCache[pattern] = new RegExp(pattern, "i");
+          } catch (e) {
+            regexCache[pattern] = null;
+          }
+        }
+        return regexCache[pattern];
       }
       
-      function findMatchingProxies(hostname, ipAddress) {
-        var matchedProxies = [];
-        
+      function testPatternMatch(hostname, pattern) {
+        var regex = getRegex(pattern);
+        return regex && regex.test(hostname);
+      }
+      
+      function findProxyForHostname(hostname) {
+        // Check each proxy configuration (already sorted by priority)
         for (var i = 0; i < proxyConfigurations.length; i++) {
           var config = proxyConfigurations[i];
           var patterns = config.patterns;
           
           for (var j = 0; j < patterns.length; j++) {
-            var pattern = patterns[j];
-            
-            if (testPatternMatch(hostname, pattern) || 
-                (ipAddress && ipAddress !== hostname && testPatternMatch(ipAddress, pattern))) {
-              matchedProxies.push({
-                proxy: config.proxyString,
-                priority: config.priority
-              });
-              break;
+            if (testPatternMatch(hostname, patterns[j])) {
+              return config.proxyString;
             }
           }
         }
         
-        return matchedProxies;
+        return "DIRECT";
       }
       
       function FindProxyForURL(url, host) {
-        var isIp = /^(\\d{1,3}\\.){3}\\d{1,3}$/.test(host);
-        var ipToCheck = isIp ? host : dnsResolve(host);
+        var hostname = host.toLowerCase();
         
-        var matchedProxies = findMatchingProxies(host, ipToCheck);
-        
-        if (matchedProxies.length > 0) {
-          matchedProxies.sort(function(a, b) {
-            return a.priority - b.priority;
-          });
-          
-          return matchedProxies[0].proxy;
+        // Early exit for non-HTTP(S) protocols
+        if (url.substring(0, 5) === 'file:' || 
+            url.substring(0, 6) === 'about:' || 
+            url.substring(0, 11) === 'javascript:' ||
+            url.substring(0, 7) === 'chrome:' ||
+            url.substring(0, 17) === 'chrome-extension:' ||
+            url.substring(0, 16) === 'moz-extension:') {
+          return "DIRECT";
         }
         
-        return "DIRECT";
+        // Early exit for localhost
+        if (hostname === 'localhost' || 
+            hostname === 'localhost.localdomain' || 
+            hostname.endsWith('.localhost')) {
+          return "DIRECT";
+        }
+        
+        // Check LRU cache first
+        var cachedProxy = lruCache.get(hostname);
+        if (cachedProxy !== null) {
+          return cachedProxy;
+        }
+        
+        // Find proxy for hostname
+        var proxy = findProxyForHostname(hostname);
+        
+        // Cache the result
+        lruCache.set(hostname, proxy);
+        
+        return proxy;
       }
     `;
     
