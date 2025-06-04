@@ -60,10 +60,10 @@ function detectCapabilities() {
     },
     
     proxyAuth: {
-      supportsHttpAuth: true,
-      supportsHttpsAuth: true,
+      supportsHttpAuth: isFirefox,
+      supportsHttpsAuth: isFirefox,
       supportsSocks4Auth: false,
-      supportsSocks5Auth: hasFeature(browser, ['proxy', 'onRequest'])
+      supportsSocks5Auth: isFirefox && hasFeature(browser, ['proxy', 'onRequest'])
     }
   };
 }

@@ -3,6 +3,32 @@ import * as browser from 'webextension-polyfill';
 import * as proxyHelpers from '../../utils/proxy-helpers';
 import browserCapabilities from '../../utils/feature-detection';
 
+// Mock webextension-polyfill
+jest.mock('webextension-polyfill', () => ({
+  proxy: {
+    onRequest: {
+      addListener: jest.fn(),
+      removeListener: jest.fn(),
+      hasListener: jest.fn()
+    },
+    onError: {
+      addListener: jest.fn(),
+      removeListener: jest.fn(),
+      hasListener: jest.fn()
+    },
+    settings: {
+      get: jest.fn().mockResolvedValue({ value: { mode: 'direct' } }),
+      set: jest.fn().mockResolvedValue(undefined),
+      clear: jest.fn().mockResolvedValue(undefined),
+      onChange: {
+        addListener: jest.fn(),
+        removeListener: jest.fn(),
+        hasListener: jest.fn()
+      }
+    }
+  }
+}));
+
 // Mock browser capabilities
 jest.mock('../../utils/feature-detection', () => ({
   __esModule: true,
@@ -17,32 +43,6 @@ jest.mock('../../utils/feature-detection', () => ({
 describe('Proxy Helpers', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    
-    // Ensure browser.proxy is properly defined for all tests
-    if (!browser.proxy) {
-      browser.proxy = {
-        onRequest: {
-          addListener: jest.fn(),
-          removeListener: jest.fn(),
-          hasListener: jest.fn()
-        },
-        onError: {
-          addListener: jest.fn(),
-          removeListener: jest.fn(),
-          hasListener: jest.fn()
-        },
-        settings: {
-          get: jest.fn().mockResolvedValue({ value: { mode: 'direct' } }),
-          set: jest.fn().mockResolvedValue(undefined),
-          clear: jest.fn().mockResolvedValue(undefined),
-          onChange: {
-            addListener: jest.fn(),
-            removeListener: jest.fn(),
-            hasListener: jest.fn()
-          }
-        }
-      };
-    }
   });
   
   afterEach(() => {

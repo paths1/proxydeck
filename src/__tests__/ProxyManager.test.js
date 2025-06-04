@@ -3,31 +3,44 @@ import * as browser from 'webextension-polyfill';
 import ProxyManager from '../modules/ProxyManager';
 import browserCapabilities from '../utils/feature-detection';
 
-// Mock imported modules
+// Create browser capability mocks for both Chrome and Firefox
+const createBrowserCapabilities = (isFirefox = false) => ({
+  browser: {
+    isFirefox,
+    isChrome: !isFirefox
+  },
+  proxy: {
+    hasProxyRequestListener: isFirefox,
+    hasProxySettings: true
+  },
+  containers: {
+    hasContainerSupport: true,
+    hasTabCookieStoreIds: true
+  },
+  action: {
+    hasBadgeTextColor: true
+  },
+  declarativeNetRequest: {
+    hasDynamicRules: true,
+    hasUpdateDynamicRules: true
+  },
+  webRequest: {
+    hasOnCompleted: true,
+    hasOnErrorOccurred: true,
+    hasOnAuthRequired: true
+  },
+  proxyAuth: {
+    supportsHttpAuth: isFirefox,
+    supportsHttpsAuth: isFirefox,
+    supportsSocks4Auth: false,
+    supportsSocks5Auth: isFirefox
+  }
+});
+
+// Mock feature detection - will be overridden in tests
 jest.mock('../utils/feature-detection', () => ({
   __esModule: true,
-  default: {
-    proxy: {
-      hasProxyRequestListener: false,
-      hasProxySettings: true
-    },
-    containers: {
-      hasContainerSupport: true,
-      hasTabCookieStoreIds: true
-    },
-    action: {
-      hasBadgeTextColor: true
-    },
-    declarativeNetRequest: {
-      hasDynamicRules: true,
-      hasUpdateDynamicRules: true
-    },
-    webRequest: {
-      hasOnCompleted: true,
-      hasOnErrorOccurred: true,
-      hasOnAuthRequired: true
-    }
-  }
+  default: createBrowserCapabilities(false) // Default to Chrome
 }));
 
 jest.mock('../utils/proxy-helpers', () => ({
@@ -66,7 +79,8 @@ describe('ProxyManager', () => {
   let mockPatternMatcher;
   let mockTrafficMonitor;
 
-  const defaultConfig = {
+  // Chrome proxy config (no auth fields)
+  const chromeProxyConfig = {
     version: 2,
     proxies: [
       {
@@ -75,8 +89,31 @@ describe('ProxyManager', () => {
         enabled: true,
         host: "proxy.example.com",
         port: 1080,
-        username: "user",
-        password: "pass",
+        priority: 0,
+        routingConfig: {
+          useContainerMode: false,
+          patterns: ['example\\.com', 'test\\.org'],
+          containers: []
+        }
+      }
+    ],
+    proxyEnabled: true
+  };
+
+  // Firefox proxy config (with auth fields)
+  const firefoxProxyConfig = {
+    version: 2,
+    proxies: [
+      {
+        id: 'default_proxy',
+        name: 'Default Proxy',
+        enabled: true,
+        host: "proxy.example.com",
+        port: 1080,
+        auth: {
+          username: "user",
+          password: "pass"
+        },
         priority: 0,
         routingConfig: {
           useContainerMode: false,
@@ -94,7 +131,7 @@ describe('ProxyManager', () => {
     // Reset browser.storage.local mock
     browser.storage.local.get.mockReset();
     browser.storage.local.set.mockReset();
-    browser.storage.local.get.mockResolvedValue({ config: defaultConfig });
+    browser.storage.local.get.mockResolvedValue({ config: chromeProxyConfig });
     browser.storage.local.set.mockResolvedValue(undefined);
     
     // Create mock dependencies
@@ -152,8 +189,8 @@ describe('ProxyManager', () => {
       await proxyManager.loadConfig();
       
       expect(browser.storage.local.get).toHaveBeenCalledWith('config');
-      expect(proxyManager.config).toEqual(defaultConfig);
-      expect(proxyManager.enabledProxies).toEqual(defaultConfig.proxies.filter(p => p.enabled));
+      expect(proxyManager.config).toEqual(chromeProxyConfig);
+      expect(proxyManager.enabledProxies).toEqual(chromeProxyConfig.proxies.filter(p => p.enabled));
     });
     
     it('should use default config if none is in storage', async () => {
@@ -204,7 +241,7 @@ describe('ProxyManager', () => {
     beforeEach(async () => {
       // Setup proxies with container configurations
       const configWithContainers = {
-        ...defaultConfig,
+        ...chromeProxyConfig,
         proxies: [
           {
             id: 'container_proxy1',
@@ -284,7 +321,7 @@ describe('ProxyManager', () => {
     beforeEach(async () => {
       // Setup proxies with pattern configurations
       const configWithPatterns = {
-        ...defaultConfig,
+        ...chromeProxyConfig,
         proxies: [
           {
             id: 'pattern_proxy1',
@@ -381,7 +418,7 @@ describe('ProxyManager', () => {
   describe('resolveProxyForRequest', () => {
     beforeEach(async () => {
       const configWithMixedProxies = {
-        ...defaultConfig,
+        ...chromeProxyConfig,
         proxies: [
           {
             id: 'pattern_proxy',
@@ -539,25 +576,23 @@ describe('ProxyManager', () => {
       );
     });
     
-    it('should return proxy details and record activity if a proxy is resolved', () => {
+    it('should return proxy details and record activity if a proxy is resolved (Chrome - no auth)', () => {
       const mockProxy = {
         id: 'test_proxy',
         host: 'proxy.example.com',
-        port: 8080,
-        username: 'user',
-        password: 'pass'
+        port: 8080
+        // Note: Chrome proxies don't have auth fields
       };
       
       proxyManager.resolveProxyForRequest.mockReturnValue(mockProxy);
       
       const result = proxyManager.handleProxyRequest({ url: 'https://example.com' });
       
+      // Chrome should not include authentication fields
       expect(result).toEqual({
         type: 'socks',
         host: 'proxy.example.com',
         port: 8080,
-        username: 'user',
-        password: 'pass',
         proxyDNS: true
       });
     });
@@ -1201,6 +1236,214 @@ describe('ProxyManager', () => {
       expect(result.match).toBe(false);
       expect(result.error).toBe(String(error));
       expect(mockOnNoMatch).toHaveBeenCalled();
+    });
+  });
+
+  // Browser-specific authentication tests
+  describe('Chrome vs Firefox Authentication Handling', () => {
+    describe('Chrome (no authentication support)', () => {
+      beforeEach(() => {
+        // Mock Chrome capabilities
+        const chromeBrowserCapabilities = createBrowserCapabilities(false);
+        jest.doMock('../utils/feature-detection', () => ({
+          __esModule: true,
+          default: chromeBrowserCapabilities
+        }));
+        
+        // Reset storage mock for Chrome config
+        browser.storage.local.get.mockResolvedValue({ config: chromeProxyConfig });
+        
+        // Create fresh ProxyManager instance
+        proxyManager = new ProxyManager({
+          tabManager: mockTabManager,
+          patternMatcher: mockPatternMatcher,
+          trafficMonitor: mockTrafficMonitor
+        });
+      });
+
+      it('should generate PAC script without authentication for Chrome', () => {
+        proxyManager.enabledProxies = [{
+          id: 'test_proxy',
+          enabled: true,
+          host: 'proxy.example.com',
+          port: 8080,
+          proxyType: 'http',
+          priority: 1,
+          routingConfig: {
+            useContainerMode: false,
+            patterns: ['example\\.com']
+          }
+          // Note: no auth field for Chrome
+        }];
+
+        const pacScript = proxyManager.generatePacScript();
+        
+        // Should not contain any authentication credentials
+        expect(pacScript).not.toContain('@');
+        expect(pacScript).not.toContain('username');
+        expect(pacScript).not.toContain('password');
+        expect(pacScript).toContain('PROXY proxy.example.com:8080');
+      });
+
+      it('should not set authentication fields in proxy resolution for Chrome', () => {
+        const testProxy = {
+          id: 'test_proxy',
+          enabled: true,
+          host: 'proxy.example.com',
+          port: 8080,
+          proxyType: 'http',
+          routingConfig: {
+            useContainerMode: false,
+            patterns: ['example\\.com']
+          }
+        };
+        
+        proxyManager.enabledProxies = [testProxy];
+        
+        // Mock pattern matcher to return our test proxy
+        mockPatternMatcher.resolveProxyForHost.mockReturnValue(testProxy);
+
+        const result = proxyManager.resolveProxyForRequest('test.example.com');
+        
+        expect(result.id).toBe('test_proxy');
+        expect(result.host).toBe('proxy.example.com');
+        expect(result.port).toBe(8080);
+        // Should not have authentication fields for Chrome
+        expect(result.auth).toBeUndefined();
+      });
+    });
+
+    describe('Firefox (full authentication support)', () => {
+      beforeEach(() => {
+        // Mock Firefox capabilities
+        const firefoxBrowserCapabilities = createBrowserCapabilities(true);
+        jest.doMock('../utils/feature-detection', () => ({
+          __esModule: true,
+          default: firefoxBrowserCapabilities
+        }));
+        
+        // Reset storage mock for Firefox config
+        browser.storage.local.get.mockResolvedValue({ config: firefoxProxyConfig });
+        
+        // Create fresh ProxyManager instance
+        proxyManager = new ProxyManager({
+          tabManager: mockTabManager,
+          patternMatcher: mockPatternMatcher,
+          trafficMonitor: mockTrafficMonitor
+        });
+      });
+
+      it('should generate PAC script with authentication for Firefox (when no proxy.onRequest)', () => {
+        // For this test, we need to temporarily modify the ProxyManager to think it's in Firefox PAC mode
+        // Save the original browser capabilities
+        const originalCapabilities = browserCapabilities;
+        
+        // Override browser capabilities to be Firefox with PAC script mode
+        Object.defineProperty(browserCapabilities, 'browser', {
+          value: { isFirefox: true, isChrome: false },
+          configurable: true
+        });
+        Object.defineProperty(browserCapabilities, 'proxy', {
+          value: { hasProxyRequestListener: false },
+          configurable: true
+        });
+
+        proxyManager.enabledProxies = [{
+          id: 'test_proxy',
+          enabled: true,
+          host: 'proxy.example.com',
+          port: 8080,
+          proxyType: 'http',
+          priority: 1,
+          auth: {
+            username: 'testuser',
+            password: 'testpass'
+          },
+          routingConfig: {
+            useContainerMode: false,
+            patterns: ['example\\.com']
+          }
+        }];
+
+        const pacScript = proxyManager.generatePacScript();
+        
+        // Should contain authentication credentials
+        expect(pacScript).toContain('testuser:testpass@proxy.example.com:8080');
+        expect(pacScript).toContain('PROXY testuser:testpass@proxy.example.com:8080');
+        
+        // Restore original capabilities 
+        Object.defineProperty(browserCapabilities, 'browser', {
+          value: originalCapabilities.browser,
+          configurable: true
+        });
+        Object.defineProperty(browserCapabilities, 'proxy', {
+          value: originalCapabilities.proxy,
+          configurable: true
+        });
+      });
+
+      it('should include authentication fields in proxy resolution for Firefox', () => {
+        const testProxy = {
+          id: 'test_proxy',
+          enabled: true,
+          host: 'proxy.example.com',
+          port: 8080,
+          proxyType: 'http',
+          auth: {
+            username: 'testuser',
+            password: 'testpass'
+          },
+          routingConfig: {
+            useContainerMode: false,
+            patterns: ['example\\.com']
+          }
+        };
+        
+        proxyManager.enabledProxies = [testProxy];
+        
+        // Mock pattern matcher to return our test proxy
+        mockPatternMatcher.resolveProxyForHost.mockReturnValue(testProxy);
+
+        const result = proxyManager.resolveProxyForRequest('test.example.com');
+        
+        expect(result.id).toBe('test_proxy');
+        expect(result.host).toBe('proxy.example.com');
+        expect(result.port).toBe(8080);
+        expect(result.auth.username).toBe('testuser');
+        expect(result.auth.password).toBe('testpass');
+      });
+
+      it('should include authentication fields in proxy resolution for Firefox even with SOCKS4', () => {
+        const testProxy = {
+          id: 'test_proxy',
+          enabled: true,
+          host: 'proxy.example.com',
+          port: 1080,
+          proxyType: 'socks4',
+          auth: {
+            username: 'testuser',
+            password: 'testpass'
+          },
+          routingConfig: {
+            useContainerMode: false,
+            patterns: ['example\\.com']
+          }
+        };
+        
+        proxyManager.enabledProxies = [testProxy];
+        
+        // Mock pattern matcher to return our test proxy
+        mockPatternMatcher.resolveProxyForHost.mockReturnValue(testProxy);
+
+        const result = proxyManager.resolveProxyForRequest('test.example.com');
+        
+        expect(result.id).toBe('test_proxy');
+        expect(result.host).toBe('proxy.example.com');
+        expect(result.port).toBe(1080);
+        // Auth fields exist in proxy config but won't be used by handleProxyRequest for SOCKS4
+        expect(result.auth.username).toBe('testuser');
+        expect(result.auth.password).toBe('testpass');
+      });
     });
   });
 

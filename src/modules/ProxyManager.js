@@ -399,9 +399,10 @@ class ProxyManager {
         proxyDNS: proxyType.startsWith('socks')
       };
       
-      if (selectedProxy.username && selectedProxy.password && proxyType !== 'socks4') {
-        proxyInfo.username = selectedProxy.username;
-        proxyInfo.password = selectedProxy.password;
+      // Only set authentication for Firefox and supported proxy types
+      if (browserCapabilities.browser.isFirefox && selectedProxy.auth?.username && selectedProxy.auth?.password && proxyType !== 'socks4') {
+        proxyInfo.username = selectedProxy.auth.username;
+        proxyInfo.password = selectedProxy.auth.password;
       }
       
       return proxyInfo;
@@ -462,8 +463,9 @@ class ProxyManager {
         const patterns = proxy.routingConfig?.patterns || [];
         let authString = "";
         
-        if (proxy.username && proxy.password && !browserCapabilities.proxy.hasProxyRequestListener) {
-          authString = `${proxy.username}:${proxy.password}@`;
+        // Authentication is only supported in Firefox
+        if (browserCapabilities.browser.isFirefox && proxy.auth?.username && proxy.auth?.password && !browserCapabilities.proxy.hasProxyRequestListener) {
+          authString = `${proxy.auth.username}:${proxy.auth.password}@`;
         }
         
         // Convert proxy type to PAC script format

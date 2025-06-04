@@ -139,14 +139,24 @@ describe('PAC Script Security Tests', () => {
       expect(configData[0].patterns[0]).toEqual(unicodePattern);
     });
 
-    it('should prevent injection through proxy credentials', () => {
+    it('should prevent injection through proxy credentials in Firefox', () => {
+      // Mock Firefox browser capabilities to enable auth
+      const originalBrowserCapabilities = require('../../utils/feature-detection').default;
+      require('../../utils/feature-detection').default = {
+        ...originalBrowserCapabilities,
+        browser: { isFirefox: true, isChrome: false },
+        proxy: { hasProxyRequestListener: false } // Force PAC script mode
+      };
+
       const proxy = {
         id: 'test-proxy',
         name: 'Test Proxy',
         host: 'proxy.test.com',
         port: 8080,
-        username: 'user"; alert("XSS"); //',
-        password: 'pass"; console.log("PWNED"); //',
+        auth: {
+          username: 'user"; alert("XSS"); //',
+          password: 'pass"; console.log("PWNED"); //'
+        },
         enabled: true,
         priority: 1,
         routingConfig: {
@@ -161,6 +171,45 @@ describe('PAC Script Security Tests', () => {
       
       expect(pacScript).not.toContain('alert("XSS")');
       expect(pacScript).not.toContain('console.log("PWNED")');
+      
+      // Restore original capabilities
+      require('../../utils/feature-detection').default = originalBrowserCapabilities;
+    });
+
+    it('should not include any credentials in Chrome PAC scripts', () => {
+      // Mock Chrome browser capabilities to disable auth
+      const originalBrowserCapabilities = require('../../utils/feature-detection').default;
+      require('../../utils/feature-detection').default = {
+        ...originalBrowserCapabilities,
+        browser: { isFirefox: false, isChrome: true }
+      };
+
+      const proxy = {
+        id: 'test-proxy',
+        name: 'Test Proxy',
+        host: 'proxy.test.com',
+        port: 8080,
+        // Note: Chrome proxies don't have auth fields
+        enabled: true,
+        priority: 1,
+        routingConfig: {
+          useContainerMode: false,
+          patterns: [{ value: 'test\\.com' }]
+        }
+      };
+      
+      proxyManager.enabledProxies = [proxy];
+      
+      const pacScript = proxyManager.generatePacScript();
+      
+      // Chrome should never have credentials in PAC scripts
+      expect(pacScript).not.toContain('@');
+      expect(pacScript).not.toContain('username');
+      expect(pacScript).not.toContain('password');
+      expect(pacScript).toContain('SOCKS5 proxy.test.com:8080');
+      
+      // Restore original capabilities
+      require('../../utils/feature-detection').default = originalBrowserCapabilities;
     });
 
     it('should prevent injection through proxy host/port', () => {
@@ -303,18 +352,24 @@ describe('PAC Script Security Tests', () => {
   });
 
   describe('JSON Data Security', () => {
-    it('should properly serialize complex proxy configurations', () => {
-      // Mock browserCapabilities to allow auth credentials in PAC script
-      const mockBrowserCapabilities = require('../../utils/feature-detection');
-      mockBrowserCapabilities.default.proxy.hasProxyRequestListener = false;
+    it('should properly serialize complex proxy configurations for Firefox', () => {
+      // Mock Firefox browserCapabilities to allow auth credentials in PAC script
+      const originalBrowserCapabilities = require('../../utils/feature-detection').default;
+      require('../../utils/feature-detection').default = {
+        ...originalBrowserCapabilities,
+        browser: { isFirefox: true, isChrome: false },
+        proxy: { hasProxyRequestListener: false } // Force PAC script mode
+      };
       
       const proxy = {
         id: 'complex-proxy',
         name: 'Complex Proxy',
         host: 'proxy.test.com',
         port: 8080,
-        username: 'testuser',
-        password: 'testpass',
+        auth: {
+          username: 'testuser',
+          password: 'testpass'
+        },
         enabled: true,
         priority: 1,
         routingConfig: {
@@ -343,6 +398,9 @@ describe('PAC Script Security Tests', () => {
         proxyString: 'SOCKS5 testuser:testpass@proxy.test.com:8080',
         priority: 1
       });
+      
+      // Restore original capabilities
+      require('../../utils/feature-detection').default = originalBrowserCapabilities;
     });
   });
 });

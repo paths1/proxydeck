@@ -1,6 +1,7 @@
 import * as browser from 'webextension-polyfill';
 import { createProxyConfig } from '../../utils.js';
 import { MESSAGE_ACTIONS } from '../../common/constants.js';
+import browserCapabilities from '../../utils/feature-detection.js';
 
 /**
  * Manages the overall configuration state for the options page
@@ -47,14 +48,17 @@ export class OptionsPageConfigManager {
           // Colors are now managed by ProxyManager in the background
           
           if (Object.prototype.hasOwnProperty.call(proxy, 'username') || Object.prototype.hasOwnProperty.call(proxy, 'password')) {
-            proxy.auth = {
-              username: proxy.username || '',
-              password: proxy.password || ''
-            };
+            // Only migrate auth fields for Firefox
+            if (browserCapabilities.browser.isFirefox) {
+              proxy.auth = {
+                username: proxy.username || '',
+                password: proxy.password || ''
+              };
+            }
             delete proxy.username;
             delete proxy.password;
-          } else if (!Object.prototype.hasOwnProperty.call(proxy, 'auth')) {
-            // Ensure auth object exists even if username/password were never defined
+          } else if (!Object.prototype.hasOwnProperty.call(proxy, 'auth') && browserCapabilities.browser.isFirefox) {
+            // Only ensure auth object exists for Firefox
             proxy.auth = { username: '', password: '' };
           }
         });

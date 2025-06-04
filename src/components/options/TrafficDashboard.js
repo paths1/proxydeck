@@ -340,7 +340,7 @@ const TrafficDashboard = () => {
                     <div className="space-y-1">
                       <p className="font-medium text-sm">Traffic estimates only</p>
                       <p className="text-xs text-muted-foreground leading-relaxed">
-                        Chrome extensions can't measure exact traffic for streaming sites (YouTube, Netflix, etc.) due to missing Content-Length headers.
+                        Chrome extensions can&apos;t measure exact traffic for streaming sites (YouTube, Netflix, etc.) due to missing Content-Length headers.
                       </p>
                     </div>
                   </div>

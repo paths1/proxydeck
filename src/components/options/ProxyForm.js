@@ -38,21 +38,31 @@ import browserCapabilities from '../../utils/feature-detection.js'; // Corrected
  * @returns {JSX.Element} The rendered ProxyForm component.
  */
 const ProxyForm = ({ proxy: initialProxyData, onSave, onUndo, onDelete, existingProxies = [], autoFocusName = false }) => {
-  const [proxy, setProxy] = useState(initialProxyData || {
-    name: '',
-    host: '127.0.0.1',
-    port: 1080,
-    proxyType: 'socks5',
-    enabled: false,
-    auth: { username: '', password: '' },
-    requireReauth: false,
-    priority: 0,
-    routingConfig: {
-      useContainerMode: false,
-      patterns: [],
-      containers: []
+  const createDefaultProxy = () => {
+    const base = {
+      name: '',
+      host: '127.0.0.1',
+      port: 1080,
+      proxyType: 'socks5',
+      enabled: false,
+      requireReauth: false,
+      priority: 0,
+      routingConfig: {
+        useContainerMode: false,
+        patterns: [],
+        containers: []
+      }
+    };
+    
+    // Only include auth fields for Firefox
+    if (browserCapabilities.browser.isFirefox) {
+      base.auth = { username: '', password: '' };
     }
-  });
+    
+    return base;
+  };
+
+  const [proxy, setProxy] = useState(initialProxyData || createDefaultProxy());
 
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [fieldErrors, setFieldErrors] = useState({});
@@ -86,7 +96,7 @@ const ProxyForm = ({ proxy: initialProxyData, onSave, onUndo, onDelete, existing
       // For simplicity, let's assume new proxies always show as "unsaved" if any field is touched.
       // A more sophisticated check might compare against a "pristine" new proxy object.
       // For now, if there's no initialProxyData, any change from the default empty state is "unsaved".
-      const defaultNewProxy = { name: '', host: '127.0.0.1', port: 1080, proxyType: 'socks5', enabled: false, auth: { username: '', password: '' }, requireReauth: false, priority: 0, routingConfig: { useContainerMode: false, patterns: [], containers: [] } };
+      const defaultNewProxy = createDefaultProxy();
       setHasUnsavedChanges(JSON.stringify(proxy) !== JSON.stringify(defaultNewProxy));
     }
   }, [proxy, initialProxyData]);
@@ -107,6 +117,9 @@ const ProxyForm = ({ proxy: initialProxyData, onSave, onUndo, onDelete, existing
    */
   const isFieldDirty = (fieldName, currentValue, originalValue) => {
     if (fieldName === 'auth.username' || fieldName === 'auth.password') {
+      // Skip auth field dirty checking for Chrome
+      if (!isAuthenticationAvailable()) return false;
+      
       const authField = fieldName.split('.')[1];
       const original = originalValues?.auth?.[authField] || '';
       return currentValue !== original;
@@ -224,6 +237,9 @@ const ProxyForm = ({ proxy: initialProxyData, onSave, onUndo, onDelete, existing
     const actualValue = type === 'checkbox' || type === 'switch' ? checked : value;
     
     if (name.startsWith('auth.')) {
+      // Skip auth field updates for Chrome
+      if (!isAuthenticationAvailable()) return;
+      
       const authField = name.split('.')[1];
       setProxy(prev => ({
         ...prev,
@@ -368,7 +384,13 @@ const ProxyForm = ({ proxy: initialProxyData, onSave, onUndo, onDelete, existing
   };
 
 
+  const isAuthenticationAvailable = () => {
+    return browserCapabilities.browser.isFirefox;
+  };
+
   const isAuthenticationSupported = (proxyType) => {
+    if (!isAuthenticationAvailable()) return false;
+    
     switch (proxyType) {
       case 'http':
         return browserCapabilities.proxyAuth.supportsHttpAuth;
@@ -384,6 +406,10 @@ const ProxyForm = ({ proxy: initialProxyData, onSave, onUndo, onDelete, existing
   };
 
   const getAuthDisabledReason = (proxyType) => {
+    if (!isAuthenticationAvailable()) {
+      return 'Authentication not supported in this browser';
+    }
+    
     switch (proxyType) {
       case 'socks4':
         return 'SOCKS4 does not support authentication';
@@ -492,42 +518,44 @@ const ProxyForm = ({ proxy: initialProxyData, onSave, onUndo, onDelete, existing
               </div>
             </div>
             
-            {/* Username and Password with inline labels */}
-            <div className="grid grid-cols-12 gap-4 items-center">
-              <Label htmlFor={`username-${proxy.id}`} className="col-span-1 text-right">
-                User
-              </Label>
-              <div className="col-span-5">
-                <InputWithBadge 
-                  id={`username-${proxy.id}`} 
-                  name="auth.username" 
-                  value={proxy.auth.username} 
-                  onChange={handleChange} 
-                  onKeyDown={handleKeyDown}
-                  placeholder={isAuthenticationSupported(proxy.proxyType) ? "Optional" : "Not supported"}
-                  disabled={!isAuthenticationSupported(proxy.proxyType)}
-                  title={getAuthDisabledReason(proxy.proxyType)}
-                  showBadge={dirtyFields['auth.username']}
-                />
+            {/* Username and Password with inline labels - only show for Firefox */}
+            {isAuthenticationAvailable() && (
+              <div className="grid grid-cols-12 gap-4 items-center">
+                <Label htmlFor={`username-${proxy.id}`} className="col-span-1 text-right">
+                  User
+                </Label>
+                <div className="col-span-5">
+                  <InputWithBadge 
+                    id={`username-${proxy.id}`} 
+                    name="auth.username" 
+                    value={proxy.auth?.username || ''} 
+                    onChange={handleChange} 
+                    onKeyDown={handleKeyDown}
+                    placeholder={isAuthenticationSupported(proxy.proxyType) ? "Optional" : "Not supported"}
+                    disabled={!isAuthenticationSupported(proxy.proxyType)}
+                    title={getAuthDisabledReason(proxy.proxyType)}
+                    showBadge={dirtyFields['auth.username']}
+                  />
+                </div>
+                <Label htmlFor={`password-${proxy.id}`} className="col-span-1 text-right">
+                  Pass
+                </Label>
+                <div className="col-span-5">
+                  <InputWithBadge 
+                    id={`password-${proxy.id}`} 
+                    name="auth.password" 
+                    type="password" 
+                    value={proxy.auth?.password || ''} 
+                    onChange={handleChange} 
+                    onKeyDown={handleKeyDown}
+                    placeholder={isAuthenticationSupported(proxy.proxyType) ? "Optional" : "Not supported"}
+                    disabled={!isAuthenticationSupported(proxy.proxyType)}
+                    title={getAuthDisabledReason(proxy.proxyType)}
+                    showBadge={dirtyFields['auth.password']}
+                  />
+                </div>
               </div>
-              <Label htmlFor={`password-${proxy.id}`} className="col-span-1 text-right">
-                Pass
-              </Label>
-              <div className="col-span-5">
-                <InputWithBadge 
-                  id={`password-${proxy.id}`} 
-                  name="auth.password" 
-                  type="password" 
-                  value={proxy.auth.password} 
-                  onChange={handleChange} 
-                  onKeyDown={handleKeyDown}
-                  placeholder={isAuthenticationSupported(proxy.proxyType) ? "Optional" : "Not supported"}
-                  disabled={!isAuthenticationSupported(proxy.proxyType)}
-                  title={getAuthDisabledReason(proxy.proxyType)}
-                  showBadge={dirtyFields['auth.password']}
-                />
-              </div>
-            </div>
+            )}
           </div>
         </CardContent>
       </Card>

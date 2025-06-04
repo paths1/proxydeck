@@ -8,6 +8,7 @@
 // Import defaultPatternMatcher for validation purposes only
 import { defaultPatternMatcher } from './modules/PatternMatcher.js';
 import { DEFAULT_PROXY_CONFIG } from './common/constants.js';
+import browserCapabilities from './utils/feature-detection.js';
 
 /**
  * Validates an IP address
@@ -83,11 +84,18 @@ function generateUniqueId() {
  * @returns {Object} - New proxy configuration object
  */
 export function createProxyConfig(name = 'New Proxy') {
-  return {
+  const config = {
     ...DEFAULT_PROXY_CONFIG,
     id: generateUniqueId(),
     name: name
   };
+  
+  // Remove auth fields for Chrome
+  if (!browserCapabilities.browser.isFirefox) {
+    delete config.auth;
+  }
+  
+  return config;
 }
 
 /**
