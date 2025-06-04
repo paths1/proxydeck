@@ -384,6 +384,7 @@ class ProxyManager {
       return { type: "direct" };
     }
     
+    
     const hostname = url.hostname.toLowerCase();
     const cookieStoreId = requestInfo.cookieStoreId;
     
@@ -400,7 +401,7 @@ class ProxyManager {
     if (selectedProxy) {
       const proxyType = selectedProxy.proxyType || 'socks5';
       const proxyInfo = {
-        type: proxyType === 'socks5' ? 'socks' : proxyType,
+        type: proxyType === 'socks5' ? 'socks' : (proxyType === 'https' ? 'http' : proxyType),
         host: selectedProxy.host,
         port: parseInt(selectedProxy.port, 10),
         proxyDNS: proxyType.startsWith('socks')
@@ -418,7 +419,6 @@ class ProxyManager {
           proxyInfo.proxyAuthorizationHeader = `Basic ${credentials}`;
         }
       }
-      
       return proxyInfo;
     }
     
