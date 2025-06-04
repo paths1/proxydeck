@@ -2,7 +2,7 @@
 
 A browser extension that routes web traffic through different proxy servers based on URL patterns.
 
-## Why ProxyDeck?
+## **Why ProxyDeck?**
 
 When my job moved work resources behind a jump host, I needed a proxy extension for easier access—and I also didn't want to route my personal traffic through the corporate network. I tried half a dozen existing solutions, and they mostly fell into these categories:
 

@@ -2,18 +2,19 @@
 
 Take complete control of your network connections with ProxyDeck, the most flexible proxy management extension for Chrome. Whether you're a developer accessing internal servers, a security professional testing network configurations, or a power user who needs granular control over web traffic, ProxyDeck provides the advanced routing capabilities you need with an intuitive interface.
 
-## Why ProxyDeck?
+## **Why ProxyDeck?**
 
 When my job moved work resources behind a jump host, I needed a proxy extension for easier access—and I also didn't want to route my personal traffic through the corporate network. I tried half a dozen existing solutions, and they mostly fell into these categories:
 
-Too complex: The most popular extensions were overwhelming to configure. I could probably figure them out given enough time, but they weren't well-designed and some options didn't work as expected.
-Too simple: Many lacked the features I needed for proper traffic routing and management.
-Hosted solutions: The rest were VPN/proxy services that required trusting third parties with my traffic.
-What I wanted was straightforward:
+- **Too complex**: The most popular extensions were overwhelming to configure. I could probably figure them out given enough time, but they weren't well-designed and some options didn't work as expected.
+- **Too simple**: Many lacked the features I needed for proper traffic routing and management.
+- **Hosted solutions**: The rest were VPN/proxy services that doesn't fit my needs.
 
-Easy to configure (yes, you need to know regex, but that's it)
-Easy identification through icon badges
-Easy verification of traffic routing with built-in monitoring
+What I wanted was straightforward:
+- Easy to configure (yes, you need to know regex, but that's it)
+- Easy identification through icon badges
+- Easy verification of traffic routing with built-in monitoring
+
 And thus ProxyDeck was born.
 
 ## Key Features That Set Us Apart
