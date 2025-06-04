@@ -1,7 +1,6 @@
 import * as browser from 'webextension-polyfill';
 import browserCapabilities from '../utils/feature-detection.js';
 import { setupProxyRequestListener, applyProxySettings, disableProxy as disableProxyHelpers } from '../utils/proxy-helpers.js';
-import { initializeProxyHandler, cleanupProxyHandler } from '../utils/firefox-proxy-handler.js';
 import { handleError, ErrorTypes, ErrorSeverity } from '../utils/error-helpers.js';
 import { createPriorityColorMap } from '../utils/priority-color.js';
 
@@ -390,6 +389,14 @@ class ProxyManager {
     
     const selectedProxy = this.resolveProxyForRequest(hostname, cookieStoreId);
     
+    // Record proxy selection for traffic tracking
+    if (selectedProxy && this.trafficMonitor?.proxyTrafficTracker && requestInfo.requestId) {
+      this.trafficMonitor.proxyTrafficTracker.recordProxyForRequest(
+        requestInfo.requestId,
+        selectedProxy.id
+      );
+    }
+    
     if (selectedProxy) {
       const proxyType = selectedProxy.proxyType || 'socks5';
       const proxyInfo = {
@@ -401,8 +408,15 @@ class ProxyManager {
       
       // Only set authentication for Firefox and supported proxy types
       if (browserCapabilities.browser.isFirefox && selectedProxy.auth?.username && selectedProxy.auth?.password && proxyType !== 'socks4') {
-        proxyInfo.username = selectedProxy.auth.username;
-        proxyInfo.password = selectedProxy.auth.password;
+        if (proxyType === 'socks5' || proxyType === 'socks') {
+          // SOCKS authentication
+          proxyInfo.username = selectedProxy.auth.username;
+          proxyInfo.password = selectedProxy.auth.password;
+        } else if (proxyType === 'http' || proxyType === 'https') {
+          // HTTP/HTTPS Basic authentication
+          const credentials = btoa(`${selectedProxy.auth.username}:${selectedProxy.auth.password}`);
+          proxyInfo.proxyAuthorizationHeader = `Basic ${credentials}`;
+        }
       }
       
       return proxyInfo;
@@ -700,9 +714,8 @@ class ProxyManager {
   }
   
   async applyRequestLevelProxySettings() {
-    // Get the ProxyTrafficTracker from TrafficMonitor if available
-    const proxyTrafficTracker = this.trafficMonitor ? this.trafficMonitor.proxyTrafficTracker : null;
-    initializeProxyHandler(this.config, this.enabledProxies, this.patternMatcher, proxyTrafficTracker);
+    // Setup proxy request listener using ProxyManager's own handler
+    setupProxyRequestListener(this.handleProxyRequest.bind(this));
   }
   
   async applyPacScriptProxySettings() {
@@ -724,7 +737,6 @@ class ProxyManager {
   
   async disableProxy() {
     if (this.hasProxyRequestListener) {
-      cleanupProxyHandler();
       try {
         if (browser.proxy && browser.proxy.settings) {
           await browser.proxy.settings.clear({});

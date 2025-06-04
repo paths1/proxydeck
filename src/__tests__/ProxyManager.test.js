@@ -50,10 +50,6 @@ jest.mock('../utils/proxy-helpers', () => ({
 }));
 
 
-jest.mock('../utils/firefox-proxy-handler', () => ({
-  initializeProxyHandler: jest.fn(),
-  cleanupProxyHandler: jest.fn()
-}));
 
 
 jest.mock('../utils/error-helpers', () => {

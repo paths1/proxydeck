@@ -26,6 +26,7 @@ export function adaptProxySettingsForFirefox(chromeSettings) {
   else if (chromeConfig.mode === 'fixed_servers') {
     firefoxConfig.value = {
       proxyType: 'manual',
+      autoLogin: true,
       http: chromeConfig.rules?.singleProxy?.host || '',
       httpPort: chromeConfig.rules?.singleProxy?.port || 0,
       ssl: chromeConfig.rules?.singleProxy?.host || '',
