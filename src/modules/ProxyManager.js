@@ -466,7 +466,22 @@ class ProxyManager {
           authString = `${proxy.username}:${proxy.password}@`;
         }
         
-        const proxyTypeString = (proxy.proxyType || 'socks5').toUpperCase();
+        // Convert proxy type to PAC script format
+        let proxyTypeString;
+        const proxyType = proxy.proxyType || 'socks5';
+        switch (proxyType.toLowerCase()) {
+          case 'http':
+          case 'https':
+            proxyTypeString = 'PROXY';
+            break;
+          case 'socks4':
+            proxyTypeString = 'SOCKS4';
+            break;
+          case 'socks5':
+          default:
+            proxyTypeString = 'SOCKS5';
+            break;
+        }
         
         return {
           patterns: patterns.map(p => p.value || p),

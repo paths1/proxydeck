@@ -1005,6 +1005,60 @@ describe('ProxyManager', () => {
       expect(patterns[1]).toEqual('example.com');
       expect(patterns[2]).toEqual('test\\..*\\.com');
     });
+
+    it('should correctly convert HTTP proxy types to PROXY in PAC script', () => {
+      proxyManager.enabledProxies = [
+        {
+          id: 'http_proxy',
+          enabled: true,
+          host: 'http.proxy.com',
+          port: 8080,
+          proxyType: 'http',
+          priority: 1,
+          routingConfig: {
+            useContainerMode: false,
+            patterns: ['example\\.com']
+          }
+        },
+        {
+          id: 'https_proxy',
+          enabled: true,
+          host: 'https.proxy.com',
+          port: 3128,
+          proxyType: 'https',
+          priority: 2,
+          routingConfig: {
+            useContainerMode: false,
+            patterns: ['test\\.com']
+          }
+        },
+        {
+          id: 'socks5_proxy',
+          enabled: true,
+          host: 'socks.proxy.com',
+          port: 1080,
+          proxyType: 'socks5',
+          priority: 3,
+          routingConfig: {
+            useContainerMode: false,
+            patterns: ['socks\\.com']
+          }
+        }
+      ];
+      
+      const pacScript = proxyManager.generatePacScript();
+      
+      // Extract the proxyConfigurations from the PAC script
+      const configMatch = pacScript.match(/var proxyConfigurations = (.+?);/);
+      expect(configMatch).toBeTruthy();
+      
+      const parsedConfig = JSON.parse(configMatch[1]);
+      
+      // Verify HTTP proxy types are converted to PROXY
+      expect(parsedConfig[0].proxyString).toBe('PROXY http.proxy.com:8080');
+      expect(parsedConfig[1].proxyString).toBe('PROXY https.proxy.com:3128');
+      expect(parsedConfig[2].proxyString).toBe('SOCKS5 socks.proxy.com:1080');
+    });
   });
 
 
