@@ -4,7 +4,17 @@ Take complete control of your network connections with ProxyDeck, the most flexi
 
 ## Why ProxyDeck?
 
- ProxyDeck is built for users who need sophisticated proxy management with easy on/off switching. Configure multiple proxy servers, create complex routing rules, assign priorities and monitor your traffic in real-time - all from a clean, professional interface.
+When my job moved work resources behind a jump host, I needed a proxy extension for easier access—and I also didn't want to route my personal traffic through the corporate network. I tried half a dozen existing solutions, and they mostly fell into these categories:
+
+Too complex: The most popular extensions were overwhelming to configure. I could probably figure them out given enough time, but they weren't well-designed and some options didn't work as expected.
+Too simple: Many lacked the features I needed for proper traffic routing and management.
+Hosted solutions: The rest were VPN/proxy services that required trusting third parties with my traffic.
+What I wanted was straightforward:
+
+Easy to configure (yes, you need to know regex, but that's it)
+Easy identification through icon badges
+Easy verification of traffic routing with built-in monitoring
+And thus ProxyDeck was born.
 
 ## Key Features That Set Us Apart
 
