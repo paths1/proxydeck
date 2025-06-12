@@ -47,7 +47,7 @@ describe('TrafficMonitor Browser Behavior', () => {
         const result = trafficMonitor.resolveProxyFromDetails(details);
         
         expect(result).toEqual({ type: 'others' });
-        expect(trafficMonitor.proxyResolver.resolveProxyForRequest).toHaveBeenCalledWith(details, trafficMonitor.enabledProxies);
+        expect(trafficMonitor.proxyResolver.resolveProxyForRequest).toHaveBeenCalledWith(details);
       });
 
       it('should categorize traffic as configured when proxy matches', () => {
@@ -62,7 +62,7 @@ describe('TrafficMonitor Browser Behavior', () => {
         const result = trafficMonitor.resolveProxyFromDetails(details);
         
         expect(result).toEqual({ type: 'configured', aggregationKey: mockAggregationKey, proxyId: 'proxy1' });
-        expect(trafficMonitor.proxyResolver.resolveProxyForRequest).toHaveBeenCalledWith(details, trafficMonitor.enabledProxies);
+        expect(trafficMonitor.proxyResolver.resolveProxyForRequest).toHaveBeenCalledWith(details);
       });
 
       it('should not categorize traffic as direct', () => {

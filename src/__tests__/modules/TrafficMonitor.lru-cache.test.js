@@ -67,7 +67,7 @@ describe('TrafficMonitor Unified Cache Implementation', () => {
       // Fill cache beyond limit
       for (let i = 0; i < 1200; i++) {
         const key = `https://example${i}.com_`;
-        trafficMonitor.cacheProxyLookup(key, `proxy${i % 3}`);
+        trafficMonitor.cacheManager.set('proxyLookup', key, `proxy${i % 3}`);
       }
       
       // Cache should not exceed max size
@@ -84,15 +84,15 @@ describe('TrafficMonitor Unified Cache Implementation', () => {
       // Fill cache to near limit
       for (let i = 0; i < 999; i++) {
         const key = `https://example${i}.com_`;
-        trafficMonitor.cacheProxyLookup(key, 'proxy1');
+        trafficMonitor.cacheManager.set('proxyLookup', key, 'proxy1');
       }
       
       // Access first entry to make it recently used
       trafficMonitor.cacheManager.get('proxyLookup', 'https://example0.com_');
       
       // Add new entries that should evict old ones
-      trafficMonitor.cacheProxyLookup('https://newsite1.com_', 'proxy1');
-      trafficMonitor.cacheProxyLookup('https://newsite2.com_', 'proxy1');
+      trafficMonitor.cacheManager.set('proxyLookup', 'https://newsite1.com_', 'proxy1');
+      trafficMonitor.cacheManager.set('proxyLookup', 'https://newsite2.com_', 'proxy1');
       
       // First entry should still exist (recently accessed)
       expect(trafficMonitor.cacheManager.has('proxyLookup', 'https://example0.com_')).toBe(true);
@@ -113,7 +113,7 @@ describe('TrafficMonitor Unified Cache Implementation', () => {
 
     it('should expire entries after TTL', () => {
       const key = 'https://example.com_';
-      trafficMonitor.cacheProxyLookup(key, 'proxy1');
+      trafficMonitor.cacheManager.set('proxyLookup', key, 'proxy1');
       
       // Entry should exist initially
       expect(trafficMonitor.cacheManager.get('proxyLookup', key)).toBe('proxy1');
@@ -133,7 +133,7 @@ describe('TrafficMonitor Unified Cache Implementation', () => {
 
     it('should update age on access', () => {
       const key = 'https://example.com_';
-      trafficMonitor.cacheProxyLookup(key, 'proxy1');
+      trafficMonitor.cacheManager.set('proxyLookup', key, 'proxy1');
       
       // Fast forward half of TTL
       jest.advanceTimersByTime(30000);
@@ -149,64 +149,6 @@ describe('TrafficMonitor Unified Cache Implementation', () => {
     });
   });
 
-  describe('Cache usage in resolveProxyForRequest', () => {
-    it('should use cache for proxy lookups', () => {
-      const details = {
-        url: 'https://example.com/path',
-        cookieStoreId: 'default'
-      };
-      
-      trafficMonitor.enabledProxies = [{ 
-        id: 'proxy1', 
-        enabled: true,
-        routingConfig: { useContainerMode: false, patterns: ['example.com'] }
-      }];
-      
-      // Mock the pattern matcher to return a match
-      trafficMonitor.patternMatcher.matchesAnyPattern = jest.fn().mockReturnValue(true);
-      
-      // First call should check patterns and cache result
-      const result1 = trafficMonitor.resolveProxyForRequest(details);
-      expect(trafficMonitor.patternMatcher.matchesAnyPattern).toHaveBeenCalledTimes(1);
-      expect(result1).toBe('proxy1');
-      
-      // Second call should use cache
-      const result2 = trafficMonitor.resolveProxyForRequest(details);
-      expect(trafficMonitor.patternMatcher.matchesAnyPattern).toHaveBeenCalledTimes(1); // Not called again
-      expect(result2).toBe('proxy1');
-    });
-
-    it('should not use cache when filtering candidates', () => {
-      const details = {
-        url: 'https://example.com/path',
-        cookieStoreId: 'default'
-      };
-      
-      const candidateProxies = [{ 
-        id: 'proxy2', 
-        enabled: true,
-        routingConfig: { useContainerMode: false, patterns: ['example.com'] }
-      }];
-      trafficMonitor.enabledProxies = [{ 
-        id: 'proxy1', 
-        enabled: true,
-        routingConfig: { useContainerMode: false, patterns: ['example.com'] }
-      }];
-      
-      // Mock pattern matcher to return match
-      trafficMonitor.patternMatcher.matchesAnyPattern = jest.fn().mockReturnValue(true);
-      
-      // Call with candidate proxies should not use cache but still call pattern matcher
-      const result1 = trafficMonitor.resolveProxyForRequest(details, candidateProxies);
-      expect(trafficMonitor.patternMatcher.matchesAnyPattern).toHaveBeenCalledTimes(1);
-      expect(result1).toBe('proxy2');
-      
-      // Another call with candidates should still hit pattern matcher (no cache)
-      const result2 = trafficMonitor.resolveProxyForRequest(details, candidateProxies);
-      expect(trafficMonitor.patternMatcher.matchesAnyPattern).toHaveBeenCalledTimes(2);
-      expect(result2).toBe('proxy2');
-    });
-  });
 
   describe('Cache clearing', () => {
     it('should clear proxyLookup cache on startMonitoring', () => {
@@ -214,8 +156,8 @@ describe('TrafficMonitor Unified Cache Implementation', () => {
       const enabledProxies = [];
       
       // Add some cache entries
-      trafficMonitor.cacheProxyLookup('key1', 'proxy1');
-      trafficMonitor.cacheProxyLookup('key2', 'proxy2');
+      trafficMonitor.cacheManager.set('proxyLookup', 'key1', 'proxy1');
+      trafficMonitor.cacheManager.set('proxyLookup', 'key2', 'proxy2');
       
       expect(trafficMonitor.cacheManager.has('proxyLookup', 'key1')).toBe(true);
       
@@ -228,7 +170,7 @@ describe('TrafficMonitor Unified Cache Implementation', () => {
 
     it('should clear caches on stopMonitoring', () => {
       // Add some cache entries
-      trafficMonitor.cacheProxyLookup('key1', 'proxy1');
+      trafficMonitor.cacheManager.set('proxyLookup', 'key1', 'proxy1');
       trafficMonitor.cacheManager.set('proxyInfo', 'info1', { type: 'configured' });
       
       expect(trafficMonitor.cacheManager.has('proxyLookup', 'key1')).toBe(true);
@@ -253,7 +195,7 @@ describe('TrafficMonitor Unified Cache Implementation', () => {
       trafficMonitor.cacheManager.get('proxyLookup', 'missing-key');
       
       // Cache hit
-      trafficMonitor.cacheProxyLookup('hit-key', 'proxy1');
+      trafficMonitor.cacheManager.set('proxyLookup', 'hit-key', 'proxy1');
       trafficMonitor.cacheManager.get('proxyLookup', 'hit-key');
       
       const stats = trafficMonitor.cacheManager.getStats('proxyLookup');

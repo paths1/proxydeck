@@ -99,8 +99,8 @@ class ProxyResolver {
     return this.proxyIdToKeyMap.get(proxyId);
   }
 
-  resolveProxyForRequest(details, proxies) {
-    if (!proxies || proxies.length === 0) {
+  resolveProxyForRequest(details) {
+    if (this.sortedProxies.length === 0) {
       return null;
     }
 

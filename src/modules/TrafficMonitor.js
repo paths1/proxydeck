@@ -482,7 +482,7 @@ class TrafficMonitor {
     }
     
     // Chrome - use pattern matching
-    const proxy = this.proxyResolver.resolveProxyForRequest(details, this.enabledProxies);
+    const proxy = this.proxyResolver.resolveProxyForRequest(details);
     if (proxy) {
       const aggregationKey = this.proxyResolver.getAggregationKey(proxy);
       return { type: 'configured', aggregationKey, proxyId: proxy.id };
@@ -527,72 +527,6 @@ class TrafficMonitor {
     this.cacheManager.set('proxyInfo', aggregationKey, resolution);
     
     return resolution;
-  }
-  
-  resolveProxyForRequest(details, candidateProxies = null) {
-    const proxiesToCheck = candidateProxies || this.enabledProxies;
-    const cacheKey = `${details.url}_${details.cookieStoreId || ''}`;
-    
-    // Check cache first (only if not filtering candidates)
-    if (!candidateProxies) {
-      const cached = this.cacheManager.get('proxyLookup', cacheKey);
-      if (cached !== undefined) {
-        return cached;
-      }
-    }
-    
-    let hostname;
-    try {
-      const hostnameMatch = this.urlHostnameRegex.exec(details.url);
-      hostname = hostnameMatch ? hostnameMatch[1] : new URL(details.url).hostname;
-    } catch {
-      return null;
-    }
-    
-    let proxyId = null;
-    
-    // Check if we already have proxy tracking for this request
-    if (!candidateProxies && details.requestId) {
-      proxyId = this.proxyTrafficTracker.getProxyForRequest(details.requestId);
-      if (proxyId) {
-        this.cacheProxyLookup(cacheKey, proxyId);
-        return proxyId;
-      }
-    }
-    
-    // Container-based routing check
-    if (details.cookieStoreId && browserCapabilities.containers.hasContainerSupport) {
-      for (const proxy of proxiesToCheck) {
-        if (proxy.routingConfig.useContainerMode && 
-            proxy.routingConfig.containers?.includes(details.cookieStoreId)) {
-          proxyId = proxy.id;
-          break;
-        }
-      }
-    }
-    
-    // Pattern-based routing check
-    if (!proxyId) {
-      for (const proxy of proxiesToCheck) {
-        if (!proxy.routingConfig.useContainerMode) {
-          if (this.patternMatcher.matchesAnyPattern(hostname, proxy.routingConfig.patterns || [])) {
-            proxyId = proxy.id;
-            break;
-          }
-        }
-      }
-    }
-    
-    if (!candidateProxies && proxyId) {
-      this.cacheProxyLookup(cacheKey, proxyId);
-    }
-    
-    return proxyId;
-  }
-  
-  cacheProxyLookup(key, proxyId) {
-    // Unified cache handles size limits and TTL automatically
-    this.cacheManager.set('proxyLookup', key, proxyId);
   }
   
   getAggregationKeysFromDataPoint(dataPoint) {
