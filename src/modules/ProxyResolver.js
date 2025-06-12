@@ -38,7 +38,7 @@ class ProxyResolver {
     // Sort proxies by priority for faster resolution
     this.sortedProxies = enabledProxies
       .slice()
-      .sort((a, b) => (a.priority || 999) - (b.priority || 999));
+      .sort((a, b) => (a.priority ?? 999) - (b.priority ?? 999));
     
     // Pre-sort pattern and container proxies
     this.sortedPatternProxies = this.sortedProxies
@@ -62,7 +62,7 @@ class ProxyResolver {
       keyGroups.get(key).push({
         id: proxy.id,
         name: proxy.name || `Proxy ${proxy.id}`,
-        priority: proxy.priority || 999,
+        priority: proxy.priority ?? 999,
         color: proxy.color,
         routingConfig: proxy.routingConfig
       });
@@ -88,7 +88,8 @@ class ProxyResolver {
       .replace('socks5', 'socks')
       .replace('https', 'http');
     
-    return `${protocol}:${proxy.host}:${proxy.port}`;
+    const key = `${protocol}:${proxy.host}:${proxy.port}`;
+    return key;
   }
 
   getProxyGroupByKey(key) {
@@ -118,7 +119,14 @@ class ProxyResolver {
     const cached = this.resolutionCache.get(cacheKey);
     if (cached && cached.timestamp > Date.now() - 60000) {
       cached.hitCount++;
-      return cached.proxy;
+      // If we have a cached proxy ID, find the current proxy object
+      if (cached.proxyId) {
+        const currentProxy = this.sortedProxies.find(p => p.id === cached.proxyId);
+        if (currentProxy) {
+          return currentProxy;
+        }
+      }
+      return cached.proxy; // Fallback for null/direct results
     }
 
     let selectedProxy = null;
@@ -148,6 +156,7 @@ class ProxyResolver {
       const aggregationKey = this.getAggregationKey(selectedProxy);
       this.resolutionCache.set(cacheKey, {
         proxy: selectedProxy,
+        proxyId: selectedProxy.id, // Cache the ID for later lookup
         aggregationKey: aggregationKey,
         timestamp: Date.now(),
         hitCount: 1
@@ -156,6 +165,7 @@ class ProxyResolver {
       // Cache negative results too
       this.resolutionCache.set(cacheKey, {
         proxy: null,
+        proxyId: null,
         aggregationKey: null,
         timestamp: Date.now(),
         hitCount: 1
@@ -203,7 +213,7 @@ class ProxyResolver {
     }
 
     // Multiple matches - return highest priority
-    matchingProxies.sort((a, b) => (a.priority || 999) - (b.priority || 999));
+    matchingProxies.sort((a, b) => (a.priority ?? 999) - (b.priority ?? 999));
     return matchingProxies[0];
   }
 
