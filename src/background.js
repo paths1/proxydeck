@@ -227,11 +227,13 @@ const messageHandlers = {
 
 
   [MESSAGE_ACTIONS.GET_TRAFFIC_DATA]: (message) => {
+    trafficMonitor.enableBroadcasts();
     return Promise.resolve(trafficMonitor.getTrafficData(
         message.windowSize || '1min'));
   },
 
   [MESSAGE_ACTIONS.GET_TRAFFIC_SOURCES]: async (_message) => {
+    trafficMonitor.enableBroadcasts();
     const { config = { proxies: [] } } = await browser.storage.local.get('config');
     return Promise.resolve(trafficMonitor.getAllTrafficSources(config.proxies || []));
   },

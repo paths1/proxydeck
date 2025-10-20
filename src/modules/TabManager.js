@@ -21,14 +21,14 @@ class TabManager {
     this.patternMatcher = options.patternMatcher;
 
     this.ALARM_PERIODIC_CHECK = 'periodicCheck';
-    // Use setTimeout for sub-minute delays instead of alarms
-    this.processQueueTimeout = null;
-    this.periodicCheckInterval = null;
+    this.ALARM_PROCESS_TAB_UPDATES = 'processQueue';
 
     this.setupTabEventListeners();
     this.boundHandleAlarm = (alarm) => {
       if (alarm.name === this.ALARM_PERIODIC_CHECK) {
         this.handlePeriodicCheck();
+      } else if (alarm.name === this.ALARM_PROCESS_TAB_UPDATES) {
+        this.handleProcessQueueAlarm();
       }
     };
 
@@ -64,11 +64,8 @@ class TabManager {
     this.tabUpdateQueue.clear();
     this.pendingTabUpdates = false;
 
-    // Clear the process tab updates timeout
-    if (this.processQueueTimeout) {
-      clearTimeout(this.processQueueTimeout);
-      this.processQueueTimeout = null;
-    }
+    // Clear the process queue alarm if scheduled
+    browser.alarms.clear(this.ALARM_PROCESS_TAB_UPDATES);
 
     // Clear the tab proxy map before refreshing
     this.tabProxyMap.clear();
@@ -158,23 +155,24 @@ class TabManager {
 
     if (!this.pendingTabUpdates) {
       this.pendingTabUpdates = true;
-
-      // Use setTimeout for sub-minute delays instead of alarms
-      if (this.processQueueTimeout) {
-        clearTimeout(this.processQueueTimeout);
-      }
-
-      this.processQueueTimeout = setTimeout(() => {
-        this.processQueueTimeout = null;
-        this.processTabUpdateQueue();
-      }, this.tabUpdateDelay);
+      this.scheduleProcessQueueAlarm(this.tabUpdateDelay);
     }
   }
-  
+
+  scheduleProcessQueueAlarm(delayMs) {
+    const when = Date.now() + delayMs;
+    browser.alarms.create(this.ALARM_PROCESS_TAB_UPDATES, { when });
+  }
+
+  handleProcessQueueAlarm() {
+    this.processTabUpdateQueue();
+  }
+
   // Process queued tab updates in batch
   processTabUpdateQueue() {
     if (this.tabUpdateQueue.size === 0) {
       this.pendingTabUpdates = false;
+      browser.alarms.clear(this.ALARM_PROCESS_TAB_UPDATES);
       return;
     }
 
@@ -206,17 +204,10 @@ class TabManager {
     }
 
     if (this.tabUpdateQueue.size > 0) {
-      // Use setTimeout for sub-minute delays instead of alarms
-      if (this.processQueueTimeout) {
-        clearTimeout(this.processQueueTimeout);
-      }
-
-      this.processQueueTimeout = setTimeout(() => {
-        this.processQueueTimeout = null;
-        this.processTabUpdateQueue();
-      }, this.tabUpdateDelay);
+      this.scheduleProcessQueueAlarm(this.tabUpdateDelay);
     } else {
       this.pendingTabUpdates = false;
+      browser.alarms.clear(this.ALARM_PROCESS_TAB_UPDATES);
     }
   }
   
@@ -302,32 +293,26 @@ class TabManager {
       this.queueTabUpdate(this.currentTabId, this.currentTabUrl, true);
     }
   }
-  
+
   // Initialize periodic checking for the active tab
   startPeriodicTabChecking() {
     // Stop any existing interval first
     this.stopPeriodicTabChecking();
 
     // Check every 8 seconds if we're still on a proxy-enabled page
-    // Use setInterval for sub-minute intervals
-    this.periodicCheckInterval = setInterval(() => {
-      this.handlePeriodicCheck();
-    }, 8000);
+    browser.alarms.create(this.ALARM_PERIODIC_CHECK, {
+      periodInMinutes: 8 / 60,
+      when: Date.now() + 8000
+    });
   }
 
   // Stop periodic checking
   stopPeriodicTabChecking() {
-    // Clear the periodic check interval
-    if (this.periodicCheckInterval) {
-      clearInterval(this.periodicCheckInterval);
-      this.periodicCheckInterval = null;
-    }
+    // Clear the periodic check alarm
+    browser.alarms.clear(this.ALARM_PERIODIC_CHECK);
 
-    // Also clear tab update timeout
-    if (this.processQueueTimeout) {
-      clearTimeout(this.processQueueTimeout);
-      this.processQueueTimeout = null;
-    }
+    // Also clear tab update alarm
+    browser.alarms.clear(this.ALARM_PROCESS_TAB_UPDATES);
     this.pendingTabUpdates = false;
   }
   
@@ -342,7 +327,7 @@ class TabManager {
     // Remove configuration listener
     eventManager.removeEventListener('message', 'tab_manager_config_update');
 
-    // Clear intervals and timeouts
+    // Clear alarms
     this.stopPeriodicTabChecking();
 
     // Clear state
