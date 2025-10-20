@@ -41,6 +41,10 @@ export function adaptProxySettingsForFirefox(chromeSettings) {
   return firefoxConfig;
 }
 
+// Track the current handler to prevent duplicate listeners
+let currentProxyRequestHandler = null;
+let currentProxyErrorHandler = null;
+
 /**
  * Sets up proxy request listener for Firefox, if the capability is available
  * @param {Function} handlerFunc - The function that will handle proxy requests
@@ -48,13 +52,28 @@ export function adaptProxySettingsForFirefox(chromeSettings) {
  */
 export function setupProxyRequestListener(handlerFunc) {
   if (!browserCapabilities.proxy.hasProxyRequestListener) return false;
-  
+
+  // Remove any existing listener first to prevent duplicates
+  if (currentProxyRequestHandler) {
+    try {
+      browser.proxy.onRequest.removeListener(currentProxyRequestHandler);
+    } catch (e) {
+      // Ignore if listener wasn't registered
+    }
+  }
+
+  // Add the new listener
   browser.proxy.onRequest.addListener(handlerFunc, { urls: ["<all_urls>"] });
-  
-  browser.proxy.onError.addListener(error => {
-    console.error("Proxy error:", error.message);
-  });
-  
+  currentProxyRequestHandler = handlerFunc;
+
+  // Set up error handler only once
+  if (!currentProxyErrorHandler) {
+    currentProxyErrorHandler = (error) => {
+      console.error("Proxy error:", error.message);
+    };
+    browser.proxy.onError.addListener(currentProxyErrorHandler);
+  }
+
   return true;
 }
 

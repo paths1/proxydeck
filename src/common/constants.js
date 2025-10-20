@@ -85,8 +85,52 @@ export const PROXY_COLORS = {
 };
 
 export const SPECIAL_TRAFFIC_COLORS = {
-  DIRECT: 'hsl(0, 0%, 30%)',      // Dark gray for direct traffic  
+  DIRECT: 'hsl(0, 0%, 30%)',      // Dark gray for direct traffic
   OTHERS: 'hsl(0, 0%, 70%)'       // Light gray for unmatched proxies
+};
+
+// Cache configuration constants
+export const CACHE_LIMITS = {
+  PROXY_RESOLVER: 1000,           // Max entries in proxy resolution cache
+  PROXY_RESOLVER_CLEANUP: 500,    // Entries to keep after cleanup (50%)
+  TRAFFIC_MONITOR: 1000,          // Max entries in traffic monitor cache
+  PATTERN_MATCHER: 500,           // Max entries in pattern matcher cache
+  UNIFIED_CACHE: 1000             // Max entries in unified cache manager
+};
+
+// Timeout and interval constants (in milliseconds)
+export const TIMEOUTS = {
+  TAB_UPDATE_DELAY: 150,          // Delay before processing tab updates
+  PROCESSING_INTERVAL: 25,        // Traffic monitor processing interval
+  SAMPLE_INTERVAL: 1000,          // Traffic sampling interval (1 second)
+  PERIODIC_TAB_CHECK: 8000,       // Periodic tab check interval (8 seconds)
+  CACHE_TTL: 60000,               // Cache time-to-live (1 minute)
+  FULL_RECALC_INTERVAL: 60000     // Stats full recalculation interval
+};
+
+// Queue and batch processing constants
+export const QUEUE_LIMITS = {
+  MAX_QUEUE_SIZE: 1000,           // Max requests in traffic monitor queue
+  MAX_BATCH_SIZE: 100,            // Max requests to process per batch
+  TAB_UPDATE_BATCH_SIZE: 5        // Max tabs to update per batch
+};
+
+// Traffic monitor constants
+export const TRAFFIC_CONFIG = {
+  MAX_HISTORY_POINTS: 60,         // Max data points to keep per window
+  REQUEST_THROTTLE_MS: 100,       // Request throttling time
+  MAX_PENDING_REQUESTS: 50,       // Max pending requests before throttling
+  AGGREGATION_INTERVALS: {
+    '5min': 5,                    // Aggregate every 5 samples for 5min view
+    '10min': 10                   // Aggregate every 10 samples for 10min view
+  }
+};
+
+// Proxy configuration limits
+export const PROXY_LIMITS = {
+  MAX_PROXIES: 10,                // Maximum number of proxies allowed
+  MIN_PORT: 1,                    // Minimum valid port number
+  MAX_PORT: 65535                 // Maximum valid port number
 };
 
 export default MESSAGE_ACTIONS;

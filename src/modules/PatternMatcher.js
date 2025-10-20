@@ -19,23 +19,29 @@ class PatternMatcher {
   }
   
   matchesAnyPattern(value, patterns) {
-    if (!patterns || patterns.length === 0) return false;
-    
+    if (!patterns || patterns.length === 0 || typeof value !== 'string') return false;
+
     if (patterns.length === 1) {
       const singlePattern = patterns[0].value || patterns[0];
       if (singlePattern === "*" || singlePattern === ".*") {
         return true;
       }
     }
+
+    // Exact match check with type safety
     for (const pattern of patterns) {
       const patternValue = pattern.value || pattern;
-      if (value.toLowerCase() === patternValue.toLowerCase()) {
-        return true;
+      if (typeof patternValue === 'string' && typeof value === 'string') {
+        if (value.toLowerCase() === patternValue.toLowerCase()) {
+          return true;
+        }
       }
     }
-    
+
+    // Regex match
     return patterns.some(pattern => {
       const patternValue = pattern.value || pattern;
+      if (typeof patternValue !== 'string') return false;
       return this.regexPatternCache.test(value, patternValue);
     });
   }

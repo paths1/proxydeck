@@ -13,25 +13,25 @@ class TabManager {
     this.tabProxyMap = new Map();
     this.tabUpdateQueue = new Map();
     this.pendingTabUpdates = false;
-    
+
     this.tabUpdateDelay = options.tabUpdateDelay || 150;
     this.tabUpdateBatchSize = options.tabUpdateBatchSize || 5;
-    
+
     this.proxyManager = options.proxyManager;
     this.patternMatcher = options.patternMatcher;
-    
+
     this.ALARM_PERIODIC_CHECK = 'periodicCheck';
-    this.ALARM_PROCESS_TAB_UPDATES = 'processTabUpdates';
-    
+    // Use setTimeout for sub-minute delays instead of alarms
+    this.processQueueTimeout = null;
+    this.periodicCheckInterval = null;
+
     this.setupTabEventListeners();
     this.boundHandleAlarm = (alarm) => {
       if (alarm.name === this.ALARM_PERIODIC_CHECK) {
         this.handlePeriodicCheck();
-      } else if (alarm.name === this.ALARM_PROCESS_TAB_UPDATES) {
-        this.processTabUpdateQueue();
       }
     };
-    
+
     eventManager.addEventListener(
       'alarm',
       'tab_manager_alarms',
@@ -39,7 +39,7 @@ class TabManager {
       'onAlarm',
       this.boundHandleAlarm
     );
-    
+
     this.setupConfigurationListener();
   }
   
@@ -63,13 +63,16 @@ class TabManager {
     // Clear any pending tab updates to prevent stale updates
     this.tabUpdateQueue.clear();
     this.pendingTabUpdates = false;
-    
-    // Clear the process tab updates alarm
-    browser.alarms.clear(this.ALARM_PROCESS_TAB_UPDATES);
-    
+
+    // Clear the process tab updates timeout
+    if (this.processQueueTimeout) {
+      clearTimeout(this.processQueueTimeout);
+      this.processQueueTimeout = null;
+    }
+
     // Clear the tab proxy map before refreshing
     this.tabProxyMap.clear();
-    
+
     // Refresh all tab badges with error handling
     this.refreshAllTabBadges().catch(error => {
       console.error('[TabManager] Error refreshing badges after config update:', error);
@@ -145,21 +148,26 @@ class TabManager {
   
   queueTabUpdate(tabId, url, isActive) {
     if (!tabId || !url) return;
-    
+
     this.tabUpdateQueue.set(tabId, {
       tabId,
       url,
       isActive,
       timestamp: Date.now()
     });
-    
+
     if (!this.pendingTabUpdates) {
       this.pendingTabUpdates = true;
-      
-      browser.alarms.create(
-        this.ALARM_PROCESS_TAB_UPDATES, 
-        { delayInMinutes: this.tabUpdateDelay / 60000 }
-      );
+
+      // Use setTimeout for sub-minute delays instead of alarms
+      if (this.processQueueTimeout) {
+        clearTimeout(this.processQueueTimeout);
+      }
+
+      this.processQueueTimeout = setTimeout(() => {
+        this.processQueueTimeout = null;
+        this.processTabUpdateQueue();
+      }, this.tabUpdateDelay);
     }
   }
   
@@ -169,18 +177,18 @@ class TabManager {
       this.pendingTabUpdates = false;
       return;
     }
-    
+
     const entries = Array.from(this.tabUpdateQueue.values())
       .sort((a, b) => a.timestamp - b.timestamp);
-    
+
     const activeEntries = entries.filter(entry => entry.isActive);
     const nonActiveEntries = entries.filter(entry => !entry.isActive);
-    
+
     const toProcess = [
       ...activeEntries,
       ...nonActiveEntries
     ].slice(0, this.tabUpdateBatchSize);
-    
+
     // Process each entry
     for (const entry of toProcess) {
       // Remove from the queue
@@ -196,12 +204,17 @@ class TabManager {
         }
       });
     }
-    
+
     if (this.tabUpdateQueue.size > 0) {
-      browser.alarms.create(
-        this.ALARM_PROCESS_TAB_UPDATES, 
-        { delayInMinutes: this.tabUpdateDelay / 60000 }
-      );
+      // Use setTimeout for sub-minute delays instead of alarms
+      if (this.processQueueTimeout) {
+        clearTimeout(this.processQueueTimeout);
+      }
+
+      this.processQueueTimeout = setTimeout(() => {
+        this.processQueueTimeout = null;
+        this.processTabUpdateQueue();
+      }, this.tabUpdateDelay);
     } else {
       this.pendingTabUpdates = false;
     }
@@ -292,20 +305,29 @@ class TabManager {
   
   // Initialize periodic checking for the active tab
   startPeriodicTabChecking() {
-    // Stop any existing alarm first
+    // Stop any existing interval first
     this.stopPeriodicTabChecking();
-    
+
     // Check every 8 seconds if we're still on a proxy-enabled page
-    // This is less frequent than before to reduce overhead
-    browser.alarms.create(this.ALARM_PERIODIC_CHECK, { periodInMinutes: 8/60 });
+    // Use setInterval for sub-minute intervals
+    this.periodicCheckInterval = setInterval(() => {
+      this.handlePeriodicCheck();
+    }, 8000);
   }
-  
+
   // Stop periodic checking
   stopPeriodicTabChecking() {
-    browser.alarms.clear(this.ALARM_PERIODIC_CHECK);
-    
-    // Also clear tab update alarm
-    browser.alarms.clear(this.ALARM_PROCESS_TAB_UPDATES);
+    // Clear the periodic check interval
+    if (this.periodicCheckInterval) {
+      clearInterval(this.periodicCheckInterval);
+      this.periodicCheckInterval = null;
+    }
+
+    // Also clear tab update timeout
+    if (this.processQueueTimeout) {
+      clearTimeout(this.processQueueTimeout);
+      this.processQueueTimeout = null;
+    }
     this.pendingTabUpdates = false;
   }
   
@@ -316,13 +338,13 @@ class TabManager {
     eventManager.removeEventListener('tab', 'tab_updated');
     eventManager.removeEventListener('tab', 'tab_removed');
     eventManager.removeEventListener('alarm', 'tab_manager_alarms');
-    
+
     // Remove configuration listener
     eventManager.removeEventListener('message', 'tab_manager_config_update');
-    
-    // Clear alarms
+
+    // Clear intervals and timeouts
     this.stopPeriodicTabChecking();
-    
+
     // Clear state
     this.tabUpdateQueue.clear();
     this.tabProxyMap.clear();

@@ -162,13 +162,14 @@ class ProxyResolver {
       });
     }
 
-    // Limit cache size
+    // Limit cache size - reduce to 50% when exceeded to prevent constant cleanup
     if (this.resolutionCache.size > 1000) {
-      // Remove least recently used entries
+      // Remove least recently used entries (oldest 50%)
       const entries = Array.from(this.resolutionCache.entries())
         .sort((a, b) => a[1].timestamp - b[1].timestamp);
-      
-      for (let i = 0; i < 200; i++) {
+
+      // Remove oldest 500 entries to bring cache down to 50% capacity
+      for (let i = 0; i < 500 && i < entries.length; i++) {
         this.resolutionCache.delete(entries[i][0]);
       }
     }

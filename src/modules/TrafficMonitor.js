@@ -72,12 +72,17 @@ class TrafficMonitor {
     this.lastUserActivity = Date.now();
     this.adaptiveProcessingEnabled = true;
     this.currentProcessingInterval = this.config.processingIntervalMs;
-    
+
+    // Track whether we have active listeners for broadcasts
+    this.hasActiveListeners = true;  // Start with true, disable after consecutive failed broadcasts
+    this.consecutiveFailedBroadcasts = 0;
+    this.maxFailedBroadcastsBeforeDisable = 5;
+
     // Bind methods for event listeners
     this.boundTrackDownload = this.trackDownloadTraffic.bind(this);
     this.boundTrackUpload = this.trackUploadTraffic.bind(this);
     this.boundSampleData = this.sampleData.bind(this);
-    
+
     // setupAlarmListener() is now called conditionally in startMonitoring()
   }
   
@@ -368,16 +373,20 @@ class TrafficMonitor {
   
   trackDownloadTraffic(details) {
     if (!details.url) return;
-    
+
     // Update last user activity timestamp
     this.lastUserActivity = Date.now();
-    
-    // Check queue size limit
+
+    // Check queue size limit - drop new request if queue is full
     if (this.requestQueue.length >= this.config.maxQueueSize) {
-      // Drop oldest request to prevent unbounded growth
-      this.requestQueue.shift();
+      // Drop the new request to prevent unbounded growth during traffic bursts
+      // This is better than dropping old requests which may contain important data
+      if (this.requestQueue.length % 100 === 0) {
+        console.warn(`[TrafficMonitor] Queue full (${this.requestQueue.length}), dropping incoming requests`);
+      }
+      return;
     }
-    
+
     // Queue the request for batch processing
     this.requestQueue.push({ type: 'download', details });
   }
@@ -746,65 +755,94 @@ class TrafficMonitor {
   /**
    * Performs a full recalculation of all statistics
    * Used periodically to ensure accuracy
+   * Optimized to use a single pass through the data
    */
   recalculateAllStats(windowSize) {
     const windowData = this.trafficData[windowSize];
     const data = windowData.data;
-    
+
     // Initialize tracking
     if (!this.pointLastProcessed[windowSize]) {
       this.pointLastProcessed[windowSize] = {};
     }
-    
+
     if (data.length === 0) return;
-    
-    // Calculate total stats
+
     const lastPoint = data[data.length - 1];
-    
-    // Download stats
-    windowData.stats.download.current = lastPoint.download_total;
-    windowData.stats.download.peak = Math.max(...data.map(pt => pt.download_total));
-    windowData.stats.download.total = data.reduce((sum, pt) => sum + pt.download_total, 0);
-    windowData.stats.download.average = windowData.stats.download.total / data.length;
-    
-    // Upload stats
-    windowData.stats.upload.current = lastPoint.upload_total;
-    windowData.stats.upload.peak = Math.max(...data.map(pt => pt.upload_total));
-    windowData.stats.upload.total = data.reduce((sum, pt) => sum + pt.upload_total, 0);
-    windowData.stats.upload.average = windowData.stats.upload.total / data.length;
-    
-    // Per-proxy stats using aggregation keys
+
+    // Get all aggregation keys
     const aggregationKeys = this.getAggregationKeysFromDataPoint(lastPoint);
-    
+
+    // Initialize accumulators
+    let downloadTotal = 0, uploadTotal = 0;
+    let downloadPeak = 0, uploadPeak = 0;
+    const proxyStats = new Map();
+
+    // Initialize proxy stats structures
     for (const aggregationKey of aggregationKeys) {
-      const downloadKey = `download_${aggregationKey}`;
-      const uploadKey = `upload_${aggregationKey}`;
-      
-      // Initialize if needed
       if (!windowData.stats.perProxy[aggregationKey]) {
         windowData.stats.perProxy[aggregationKey] = {
           download: { current: 0, peak: 0, total: 0, average: 0 },
           upload: { current: 0, peak: 0, total: 0, average: 0 }
         };
       }
-      
-      // Download stats for this proxy
-      const downloadValues = data.map(pt => pt[downloadKey] || 0);
-      windowData.stats.perProxy[aggregationKey].download.current = lastPoint[downloadKey] || 0;
-      windowData.stats.perProxy[aggregationKey].download.peak = Math.max(...downloadValues);
-      windowData.stats.perProxy[aggregationKey].download.total = downloadValues.reduce((sum, val) => sum + val, 0);
-      windowData.stats.perProxy[aggregationKey].download.average = 
-        windowData.stats.perProxy[aggregationKey].download.total / data.length;
-      
-      // Upload stats for this proxy
-      const uploadValues = data.map(pt => pt[uploadKey] || 0);
-      windowData.stats.perProxy[aggregationKey].upload.current = lastPoint[uploadKey] || 0;
-      windowData.stats.perProxy[aggregationKey].upload.peak = Math.max(...uploadValues);
-      windowData.stats.perProxy[aggregationKey].upload.total = uploadValues.reduce((sum, val) => sum + val, 0);
-      windowData.stats.perProxy[aggregationKey].upload.average = 
-        windowData.stats.perProxy[aggregationKey].upload.total / data.length;
+      proxyStats.set(aggregationKey, {
+        download: { total: 0, peak: 0 },
+        upload: { total: 0, peak: 0 }
+      });
     }
-    
+
+    // Single pass through all data points
+    for (const pt of data) {
+      // Total stats
+      downloadTotal += pt.download_total;
+      uploadTotal += pt.upload_total;
+      downloadPeak = Math.max(downloadPeak, pt.download_total);
+      uploadPeak = Math.max(uploadPeak, pt.upload_total);
+
+      // Per-proxy stats
+      for (const aggregationKey of aggregationKeys) {
+        const downloadKey = `download_${aggregationKey}`;
+        const uploadKey = `upload_${aggregationKey}`;
+        const downloadVal = pt[downloadKey] || 0;
+        const uploadVal = pt[uploadKey] || 0;
+
+        const stats = proxyStats.get(aggregationKey);
+        stats.download.total += downloadVal;
+        stats.upload.total += uploadVal;
+        stats.download.peak = Math.max(stats.download.peak, downloadVal);
+        stats.upload.peak = Math.max(stats.upload.peak, uploadVal);
+      }
+    }
+
+    // Update total stats
+    windowData.stats.download.current = lastPoint.download_total;
+    windowData.stats.download.peak = downloadPeak;
+    windowData.stats.download.total = downloadTotal;
+    windowData.stats.download.average = downloadTotal / data.length;
+
+    windowData.stats.upload.current = lastPoint.upload_total;
+    windowData.stats.upload.peak = uploadPeak;
+    windowData.stats.upload.total = uploadTotal;
+    windowData.stats.upload.average = uploadTotal / data.length;
+
+    // Update per-proxy stats
+    for (const aggregationKey of aggregationKeys) {
+      const stats = proxyStats.get(aggregationKey);
+      const downloadKey = `download_${aggregationKey}`;
+      const uploadKey = `upload_${aggregationKey}`;
+
+      windowData.stats.perProxy[aggregationKey].download.current = lastPoint[downloadKey] || 0;
+      windowData.stats.perProxy[aggregationKey].download.peak = stats.download.peak;
+      windowData.stats.perProxy[aggregationKey].download.total = stats.download.total;
+      windowData.stats.perProxy[aggregationKey].download.average = stats.download.total / data.length;
+
+      windowData.stats.perProxy[aggregationKey].upload.current = lastPoint[uploadKey] || 0;
+      windowData.stats.perProxy[aggregationKey].upload.peak = stats.upload.peak;
+      windowData.stats.perProxy[aggregationKey].upload.total = stats.upload.total;
+      windowData.stats.perProxy[aggregationKey].upload.average = stats.upload.total / data.length;
+    }
+
     // Update tracking
     this.pointLastProcessed[windowSize]['data'] = data.length;
   }
@@ -1005,36 +1043,61 @@ class TrafficMonitor {
   }
   
   broadcastUpdate() {
+    // Skip broadcasting if we've detected no active listeners
+    if (!this.hasActiveListeners) {
+      return;
+    }
+
     try {
       // Create shallow copies of the data
       const updates = {};
-      
+
       for (const windowSize in this.trafficData) {
         const windowData = this.trafficData[windowSize];
-        
+
         // Only send last 3 data points for incremental updates
         const recentData = this.getLatestPoints(windowData.data, 3);
-        
+
         updates[windowSize] = {
           data: recentData,
           stats: {...windowData.stats},
           meta: {...windowData.meta}
         };
       }
-      
+
       // Send optimized message
       const message = {
         action: MESSAGE_ACTIONS.TRAFFIC_UPDATE,
         updates
       };
-      
+
       // Send via runtime for extension pages
-      browser.runtime.sendMessage(message).catch(() => {
-        // Ignore broadcast errors
-      });
+      browser.runtime.sendMessage(message)
+        .then(() => {
+          // Successful broadcast - reset failure counter
+          this.consecutiveFailedBroadcasts = 0;
+        })
+        .catch(() => {
+          // Failed broadcast - increment counter
+          this.consecutiveFailedBroadcasts++;
+
+          // If we've failed too many times, disable broadcasting
+          if (this.consecutiveFailedBroadcasts >= this.maxFailedBroadcastsBeforeDisable) {
+            this.hasActiveListeners = false;
+            console.log('[TrafficMonitor] Disabling broadcasts - no active listeners detected');
+          }
+        });
     } catch (e) {
       // Ignore errors
     }
+  }
+
+  /**
+   * Re-enable broadcasting (called when a new listener is detected)
+   */
+  enableBroadcasts() {
+    this.hasActiveListeners = true;
+    this.consecutiveFailedBroadcasts = 0;
   }
   
   /**

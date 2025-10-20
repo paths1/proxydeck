@@ -80,19 +80,33 @@ browser.alarms.onAlarm.addListener((alarm) => {
 });
 
 function initializeExtension(startPeriodicChecking = false) {
-  proxyManager.loadConfig().then(config => {
-    if (!config.proxyEnabled) {
-      proxyManager.enable();
-    } else {
-      trafficMonitor.startMonitoring(config, proxyManager.enabledProxies);
-    }
-    
-    tabManager.refreshAllTabBadges();
-    
-    if (startPeriodicChecking) {
-      tabManager.startPeriodicTabChecking();
-    }
-  });
+  proxyManager.loadConfig()
+    .then(config => {
+      if (!config.proxyEnabled) {
+        proxyManager.enable();
+      } else {
+        trafficMonitor.startMonitoring(config, proxyManager.enabledProxies);
+      }
+
+      tabManager.refreshAllTabBadges();
+
+      if (startPeriodicChecking) {
+        tabManager.startPeriodicTabChecking();
+      }
+    })
+    .catch(error => {
+      console.error('[Extension] Failed to initialize:', error);
+      // Attempt to use default configuration
+      try {
+        const defaultConfig = proxyManager.getDefaultConfig();
+        proxyManager.config = defaultConfig;
+        proxyManager.saveConfig().catch(err => {
+          console.error('[Extension] Failed to save default config:', err);
+        });
+      } catch (err) {
+        console.error('[Extension] Failed to recover from initialization error:', err);
+      }
+    });
 }
 
 browser.runtime.onInstalled.addListener(() => {
@@ -309,32 +323,44 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
 // Browser action click handler removed - legacy functionality
 
 (async function initializeState() {
-  // Initialize icon first
-  initializeExtensionIcon();
-  
-  // Load saved theme and apply it (Chrome only)
-  if (!browserCapabilities.isFirefox) {
-    try {
-      const savedTheme = await browser.storage.local.get('iconTheme');
-      if (savedTheme.iconTheme && savedTheme.iconTheme.isDark !== undefined) {
-        updateExtensionIcon(savedTheme.iconTheme.isDark);
-      }
-    } catch (error) {
-      console.error('Failed to load saved theme:', error);
-    }
-  }
-  
-  proxyManager.loadConfig().then(config => {
-    if (config.proxyEnabled) {
-      proxyManager.applyProxySettings();
-      trafficMonitor.startMonitoring(config, proxyManager.enabledProxies);
-      
-      browser.tabs.query({ active: true, currentWindow: true }).then(tabs => {
-        if (tabs && tabs.length > 0) {
-          tabManager.handleTabActivated({ tabId: tabs[0].id });
-          tabManager.startPeriodicTabChecking();
+  try {
+    // Initialize icon first
+    initializeExtensionIcon();
+
+    // Load saved theme and apply it (Chrome only)
+    if (!browserCapabilities.isFirefox) {
+      try {
+        const savedTheme = await browser.storage.local.get('iconTheme');
+        if (savedTheme.iconTheme && savedTheme.iconTheme.isDark !== undefined) {
+          updateExtensionIcon(savedTheme.iconTheme.isDark);
         }
-      });
+      } catch (error) {
+        console.error('[Extension] Failed to load saved theme:', error);
+      }
     }
-  });
+
+    proxyManager.loadConfig()
+      .then(config => {
+        if (config.proxyEnabled) {
+          proxyManager.applyProxySettings();
+          trafficMonitor.startMonitoring(config, proxyManager.enabledProxies);
+
+          browser.tabs.query({ active: true, currentWindow: true })
+            .then(tabs => {
+              if (tabs && tabs.length > 0) {
+                tabManager.handleTabActivated({ tabId: tabs[0].id });
+                tabManager.startPeriodicTabChecking();
+              }
+            })
+            .catch(error => {
+              console.error('[Extension] Failed to query tabs:', error);
+            });
+        }
+      })
+      .catch(error => {
+        console.error('[Extension] Failed to load config during state initialization:', error);
+      });
+  } catch (error) {
+    console.error('[Extension] Critical error during state initialization:', error);
+  }
 })();

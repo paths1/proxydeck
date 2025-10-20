@@ -3,6 +3,7 @@ import browserCapabilities from '../utils/feature-detection.js';
 import { setupProxyRequestListener, applyProxySettings, disableProxy as disableProxyHelpers } from '../utils/proxy-helpers.js';
 import { handleError, ErrorTypes, ErrorSeverity } from '../utils/error-helpers.js';
 import { createPriorityColorMap } from '../utils/priority-color.js';
+import { PROXY_LIMITS } from '../common/constants.js';
 
 /**
  * ProxyManager class manages proxy configurations and routing
@@ -145,48 +146,86 @@ class ProxyManager {
   async saveConfig() {
     // Ensure colors are up to date before saving
     this.updateProxyColors();
-    await browser.storage.local.set({ config: this.config });
+    try {
+      await browser.storage.local.set({ config: this.config });
+    } catch (error) {
+      if (error.name === 'QuotaExceededError' || error.message?.includes('quota')) {
+        throw new Error('Storage quota exceeded. Please reduce the number of proxies or patterns.');
+      }
+      throw error;
+    }
     return this.config;
   }
 
   // This method is called from background.js but wasn't implemented
   async updateConfig(newConfig) {
-    // Make sure we preserve individual proxy enabled states 
+    // Make sure we preserve individual proxy enabled states
     if (newConfig && newConfig.proxies && Array.isArray(newConfig.proxies)) {
-      // Enforce proxy limit - maximum 10 proxies
-      if (newConfig.proxies.length > 10) {
-        throw new Error('Maximum of 10 proxies are allowed');
+      // Enforce proxy limit
+      if (newConfig.proxies.length > PROXY_LIMITS.MAX_PROXIES) {
+        throw new Error(`Maximum of ${PROXY_LIMITS.MAX_PROXIES} proxies are allowed`);
       }
-      
-      this.config = { 
+
+      // Validate proxy configurations
+      for (const proxy of newConfig.proxies) {
+        this.validateProxyConfig(proxy);
+      }
+
+      this.config = {
         ...newConfig,
-        proxies: newConfig.proxies.map(proxy => ({ 
+        proxies: newConfig.proxies.map(proxy => ({
           ...proxy,
-          routingConfig: proxy.routingConfig ? { 
+          routingConfig: proxy.routingConfig ? {
             ...proxy.routingConfig,
             patterns: [...(proxy.routingConfig.patterns || [])],
             containers: [...(proxy.routingConfig.containers || [])]
           } : undefined
         }))
       };
-      
+
       // This ensures proxy features are enabled, but individual proxy enabled states are preserved
       this.config.proxyEnabled = true;
-      
+
       // Calculate colors for the updated configuration
       this.updateProxyColors();
-      
+
       // Update the enabledProxies array to match the new config
       this.enabledProxies = this.config.proxies.filter(proxy => proxy.enabled);
-      
+
       // Save the config to storage
       await this.saveConfig();
-      
+
       // Apply the new proxy settings
       await this.applyProxySettings();
     }
-    
+
     return this.config;
+  }
+
+  /**
+   * Validates a proxy configuration
+   * @param {Object} proxy - Proxy configuration to validate
+   * @throws {Error} If validation fails
+   */
+  validateProxyConfig(proxy) {
+    // Validate port number
+    if (proxy.port !== undefined && proxy.port !== null) {
+      const port = parseInt(proxy.port, 10);
+      if (isNaN(port) || port < PROXY_LIMITS.MIN_PORT || port > PROXY_LIMITS.MAX_PORT) {
+        throw new Error(`Invalid port number for proxy "${proxy.name || 'unnamed'}". Port must be between ${PROXY_LIMITS.MIN_PORT} and ${PROXY_LIMITS.MAX_PORT}.`);
+      }
+    }
+
+    // Validate host
+    if (!proxy.host || typeof proxy.host !== 'string' || proxy.host.trim() === '') {
+      throw new Error(`Invalid host for proxy "${proxy.name || 'unnamed'}". Host is required.`);
+    }
+
+    // Validate proxy type
+    const validTypes = ['http', 'https', 'socks4', 'socks5'];
+    if (proxy.proxyType && !validTypes.includes(proxy.proxyType.toLowerCase())) {
+      throw new Error(`Invalid proxy type for proxy "${proxy.name || 'unnamed'}". Must be one of: ${validTypes.join(', ')}`);
+    }
   }
   
   async enable() {
@@ -220,47 +259,58 @@ class ProxyManager {
   
   async updateProxy(proxyId, updates) {
     const proxyIndex = this.config.proxies.findIndex(p => p.id === proxyId);
-    
+
     if (proxyIndex === -1) {
       throw new Error(`Proxy with ID ${proxyId} not found`);
     }
-    
+
     const currentProxy = this.config.proxies[proxyIndex];
-    
+
     // Handle toggling enabled state when no explicit value provided
     if ('enabled' in updates && updates.enabled === undefined) {
       updates.enabled = !currentProxy.enabled;
     }
-    
+
+    // Create a temporary proxy object for validation
+    const updatedProxy = { ...currentProxy, ...updates };
+
     // Deep merge for routingConfig updates
     if (updates.routingConfig) {
-      this.config.proxies[proxyIndex].routingConfig = {
+      updatedProxy.routingConfig = {
         ...currentProxy.routingConfig,
         ...updates.routingConfig,
         // Preserve arrays properly
-        patterns: updates.routingConfig.patterns !== undefined 
+        patterns: updates.routingConfig.patterns !== undefined
           ? [...updates.routingConfig.patterns]
           : currentProxy.routingConfig.patterns,
         containers: updates.routingConfig.containers !== undefined
           ? [...updates.routingConfig.containers]
           : currentProxy.routingConfig.containers
       };
+    }
+
+    // Validate the updated proxy configuration
+    this.validateProxyConfig(updatedProxy);
+
+    // Apply routingConfig updates
+    if (updates.routingConfig) {
+      this.config.proxies[proxyIndex].routingConfig = updatedProxy.routingConfig;
       delete updates.routingConfig;
     }
-    
+
     // Apply remaining updates
     Object.assign(this.config.proxies[proxyIndex], updates);
-    
+
     // If priority was updated, recalculate colors for all proxies
     if ('priority' in updates) {
       this.updateProxyColors();
     }
-    
+
     this.enabledProxies = this.config.proxies.filter(proxy => proxy.enabled);
-    
+
     await this.saveConfig();
     await this.applyProxySettings();
-    
+
     return this.config.proxies[proxyIndex];
   }
   
