@@ -2,7 +2,6 @@ import * as browser from 'webextension-polyfill';
 import { createProxyConfig } from '../../utils.js';
 import { MESSAGE_ACTIONS } from '../../common/constants.js';
 import browserCapabilities from '../../utils/feature-detection.js';
-import { validateConfig, validateConfigOrThrow, getValidationErrorMessages } from '../../validation/config-schema.js';
 
 /**
  * Manages the overall configuration state for the options page
@@ -29,27 +28,12 @@ export class OptionsPageConfigManager {
     try {
       const result = await browser.storage.local.get("config");
       if (result.config) {
-        // Validate loaded configuration
-        const validationResult = validateConfig(result.config);
-        if (!validationResult.success) {
-          const errorMessages = getValidationErrorMessages(validationResult.error);
-          console.error('[OptionsPageConfigManager] Configuration validation failed:', errorMessages);
-          console.warn('[OptionsPageConfigManager] Falling back to default config');
-          // Fall back to default config on validation failure
-          this.currentConfig = {
-            proxies: [],
-            version: 2,
-            proxyEnabled: true
-          };
-        } else {
-          this.currentConfig = result.config;
-        }
+        this.currentConfig = result.config;
       } else {
         // Initialize with default config
         this.currentConfig = {
           proxies: [],
-          version: 2,
-          proxyEnabled: true
+          version: 2
         };
 
         // Initialize empty proxy array if needed
@@ -374,14 +358,6 @@ class ConfigSaver {
     this.lastSaveTime = Date.now();
 
     try {
-      // Validate configuration before saving to prevent corruption
-      try {
-        validateConfigOrThrow(config);
-      } catch (validationError) {
-        console.error('[ConfigSaver] Configuration validation failed:', validationError.message);
-        throw new Error(`Cannot save invalid configuration: ${validationError.message}`);
-      }
-
       await browser.storage.local.set({ config });
 
       await browser.runtime.sendMessage({
