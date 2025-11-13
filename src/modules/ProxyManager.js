@@ -3,6 +3,7 @@ import browserCapabilities from '../utils/feature-detection.js';
 import { setupProxyRequestListener, applyProxySettings, disableProxy as disableProxyHelpers } from '../utils/proxy-helpers.js';
 import { handleError, ErrorTypes, ErrorSeverity } from '../utils/error-helpers.js';
 import { createPriorityColorMap } from '../utils/priority-color.js';
+import { validateConfig, validateConfigOrThrow, getValidationErrorMessages } from '../validation/config-schema.js';
 
 /**
  * ProxyManager class manages proxy configurations and routing
@@ -70,11 +71,27 @@ class ProxyManager {
   async loadConfig() {
     const result = await browser.storage.local.get('config');
     this.config = result.config || this.getDefaultConfig();
-    
+
     if (!this.config.version || this.config.version !== 2 || !Array.isArray(this.config.proxies)) {
       this.config = this.getDefaultConfig();
     }
-    
+
+    // Validate loaded configuration against V2 schema
+    const validationResult = validateConfig(this.config);
+    if (!validationResult.success) {
+      const errorMessages = getValidationErrorMessages(validationResult.error);
+      console.error('Configuration validation failed:', errorMessages);
+      handleError(
+        'Invalid configuration structure detected',
+        ErrorTypes.CONFIGURATION,
+        ErrorSeverity.HIGH,
+        new Error(errorMessages.join(', ')),
+        { data: { config: this.config, errors: errorMessages } }
+      );
+      // Fall back to default config on validation failure
+      this.config = this.getDefaultConfig();
+    }
+
     this.config.proxyEnabled = true;
     
     if (this.config.proxies && this.config.proxies.length > 1) {
@@ -145,31 +162,62 @@ class ProxyManager {
   async saveConfig() {
     // Ensure colors are up to date before saving
     this.updateProxyColors();
+
+    // Validate configuration before saving to prevent corruption
+    try {
+      validateConfigOrThrow(this.config);
+    } catch (error) {
+      console.error('Cannot save invalid configuration:', error.message);
+      handleError(
+        'Attempted to save invalid configuration',
+        ErrorTypes.CONFIGURATION,
+        ErrorSeverity.CRITICAL,
+        error,
+        { data: { config: this.config } }
+      );
+      throw error; // Prevent saving invalid config
+    }
+
     await browser.storage.local.set({ config: this.config });
     return this.config;
   }
 
   // This method is called from background.js but wasn't implemented
   async updateConfig(newConfig) {
-    // Make sure we preserve individual proxy enabled states 
+    // Validate incoming configuration immediately
+    try {
+      validateConfigOrThrow(newConfig);
+    } catch (error) {
+      console.error('Rejected invalid configuration update:', error.message);
+      handleError(
+        'Attempted to update with invalid configuration',
+        ErrorTypes.CONFIGURATION,
+        ErrorSeverity.CRITICAL,
+        error,
+        { data: { newConfig } }
+      );
+      throw error; // Reject invalid updates
+    }
+
+    // Make sure we preserve individual proxy enabled states
     if (newConfig && newConfig.proxies && Array.isArray(newConfig.proxies)) {
       // Enforce proxy limit - maximum 10 proxies
       if (newConfig.proxies.length > 10) {
         throw new Error('Maximum of 10 proxies are allowed');
       }
-      
-      this.config = { 
+
+      this.config = {
         ...newConfig,
-        proxies: newConfig.proxies.map(proxy => ({ 
+        proxies: newConfig.proxies.map(proxy => ({
           ...proxy,
-          routingConfig: proxy.routingConfig ? { 
+          routingConfig: proxy.routingConfig ? {
             ...proxy.routingConfig,
             patterns: [...(proxy.routingConfig.patterns || [])],
             containers: [...(proxy.routingConfig.containers || [])]
           } : undefined
         }))
       };
-      
+
       // This ensures proxy features are enabled, but individual proxy enabled states are preserved
       this.config.proxyEnabled = true;
       
