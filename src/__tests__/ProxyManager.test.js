@@ -85,7 +85,9 @@ describe('ProxyManager', () => {
         enabled: true,
         host: "proxy.example.com",
         port: 1080,
+        proxyType: 'socks5',
         priority: 0,
+        color: 'hsl(348, 83%, 62%)',
         routingConfig: {
           useContainerMode: false,
           patterns: ['example\\.com', 'test\\.org'],
@@ -106,11 +108,13 @@ describe('ProxyManager', () => {
         enabled: true,
         host: "proxy.example.com",
         port: 1080,
+        proxyType: 'socks5',
         auth: {
           username: "user",
           password: "pass"
         },
         priority: 0,
+        color: 'hsl(348, 83%, 62%)',
         routingConfig: {
           useContainerMode: false,
           patterns: ['example\\.com', 'test\\.org'],
@@ -123,11 +127,12 @@ describe('ProxyManager', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    
+
     // Reset browser.storage.local mock
     browser.storage.local.get.mockReset();
     browser.storage.local.set.mockReset();
-    browser.storage.local.get.mockResolvedValue({ config: chromeProxyConfig });
+    // Deep clone the config to prevent test interference
+    browser.storage.local.get.mockResolvedValue({ config: JSON.parse(JSON.stringify(chromeProxyConfig)) });
     browser.storage.local.set.mockResolvedValue(undefined);
     
     // Create mock dependencies
@@ -207,19 +212,38 @@ describe('ProxyManager', () => {
           {
             id: 'default_proxy1',
             name: 'Default Proxy',
-            enabled: true
+            host: '127.0.0.1',
+            port: 1080,
+            proxyType: 'socks5',
+            enabled: true,
+            priority: 0,
+            color: null,
+            routingConfig: { useContainerMode: false, patterns: [], containers: [] }
           },
           {
             id: 'custom_proxy',
             name: 'Custom Proxy',
-            enabled: true
+            host: '127.0.0.1',
+            port: 1081,
+            proxyType: 'socks5',
+            enabled: true,
+            priority: 1,
+            color: null,
+            routingConfig: { useContainerMode: false, patterns: [], containers: [] }
           },
           {
             id: 'default_proxy2',
             name: 'Default Proxy',
-            enabled: false
+            host: '127.0.0.1',
+            port: 1082,
+            proxyType: 'socks5',
+            enabled: false,
+            priority: 2,
+            color: null,
+            routingConfig: { useContainerMode: false, patterns: [], containers: [] }
           }
-        ]
+        ],
+        proxyEnabled: true
       };
       
       browser.storage.local.get.mockResolvedValue({ config: configWithDuplicates });
@@ -242,30 +266,46 @@ describe('ProxyManager', () => {
           {
             id: 'container_proxy1',
             name: 'Container Proxy 1',
+            host: '127.0.0.1',
+            port: 1080,
+            proxyType: 'socks5',
             enabled: true,
             priority: 2,
+            color: null,
             routingConfig: {
               useContainerMode: true,
+              patterns: [],
               containers: ['container1', 'container2']
             }
           },
           {
             id: 'container_proxy2',
             name: 'Container Proxy 2',
+            host: '127.0.0.1',
+            port: 1081,
+            proxyType: 'socks5',
             enabled: true,
             priority: 1,
+            color: null,
             routingConfig: {
               useContainerMode: true,
+              patterns: [],
               containers: ['container3']
             }
           },
           {
             id: 'pattern_proxy',
             name: 'Pattern Proxy',
+            host: '127.0.0.1',
+            port: 1082,
+            proxyType: 'socks5',
             enabled: true,
+            priority: 0,
+            color: null,
             routingConfig: {
               useContainerMode: false,
-              patterns: ['example\\.com']
+              patterns: ['example\\.com'],
+              containers: []
             }
           }
         ]
@@ -322,29 +362,45 @@ describe('ProxyManager', () => {
           {
             id: 'pattern_proxy1',
             name: 'Pattern Proxy 1',
+            host: '127.0.0.1',
+            port: 1080,
+            proxyType: 'socks5',
             enabled: true,
             priority: 2,
+            color: null,
             routingConfig: {
               useContainerMode: false,
-              patterns: ['example\\.com', 'test\\.org']
+              patterns: ['example\\.com', 'test\\.org'],
+              containers: []
             }
           },
           {
             id: 'pattern_proxy2',
             name: 'Pattern Proxy 2',
+            host: '127.0.0.1',
+            port: 1081,
+            proxyType: 'socks5',
             enabled: true,
             priority: 1,
+            color: null,
             routingConfig: {
               useContainerMode: false,
-              patterns: ['another\\.com']
+              patterns: ['another\\.com'],
+              containers: []
             }
           },
           {
             id: 'container_proxy',
             name: 'Container Proxy',
+            host: '127.0.0.1',
+            port: 1082,
+            proxyType: 'socks5',
             enabled: true,
+            priority: 0,
+            color: null,
             routingConfig: {
               useContainerMode: true,
+              patterns: [],
               containers: ['container1']
             }
           }
@@ -419,20 +475,30 @@ describe('ProxyManager', () => {
           {
             id: 'pattern_proxy',
             name: 'Pattern Proxy',
+            host: '127.0.0.1',
+            port: 1080,
+            proxyType: 'socks5',
             enabled: true,
             priority: 2,
+            color: null,
             routingConfig: {
               useContainerMode: false,
-              patterns: ['example\\.com']
+              patterns: ['example\\.com'],
+              containers: []
             }
           },
           {
             id: 'container_proxy',
             name: 'Container Proxy',
+            host: '127.0.0.1',
+            port: 1081,
+            proxyType: 'socks5',
             enabled: true,
             priority: 1,
+            color: null,
             routingConfig: {
               useContainerMode: true,
+              patterns: [],
               containers: ['container1']
             }
           }
@@ -722,7 +788,7 @@ describe('ProxyManager', () => {
   describe('updateProxy methods', () => {
     beforeEach(async () => {
       await proxyManager.loadConfig();
-      
+
       jest.spyOn(proxyManager, 'saveConfig').mockResolvedValue(proxyManager.config);
       jest.spyOn(proxyManager, 'applyProxySettings').mockResolvedValue(undefined);
     });

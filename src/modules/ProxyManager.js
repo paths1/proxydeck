@@ -70,11 +70,11 @@ class ProxyManager {
   async loadConfig() {
     const result = await browser.storage.local.get('config');
     this.config = result.config || this.getDefaultConfig();
-    
+
     if (!this.config.version || this.config.version !== 2 || !Array.isArray(this.config.proxies)) {
       this.config = this.getDefaultConfig();
     }
-    
+
     this.config.proxyEnabled = true;
     
     if (this.config.proxies && this.config.proxies.length > 1) {
@@ -151,25 +151,25 @@ class ProxyManager {
 
   // This method is called from background.js but wasn't implemented
   async updateConfig(newConfig) {
-    // Make sure we preserve individual proxy enabled states 
+    // Make sure we preserve individual proxy enabled states
     if (newConfig && newConfig.proxies && Array.isArray(newConfig.proxies)) {
       // Enforce proxy limit - maximum 10 proxies
       if (newConfig.proxies.length > 10) {
         throw new Error('Maximum of 10 proxies are allowed');
       }
-      
-      this.config = { 
+
+      this.config = {
         ...newConfig,
-        proxies: newConfig.proxies.map(proxy => ({ 
+        proxies: newConfig.proxies.map(proxy => ({
           ...proxy,
-          routingConfig: proxy.routingConfig ? { 
+          routingConfig: proxy.routingConfig ? {
             ...proxy.routingConfig,
             patterns: [...(proxy.routingConfig.patterns || [])],
             containers: [...(proxy.routingConfig.containers || [])]
           } : undefined
         }))
       };
-      
+
       // This ensures proxy features are enabled, but individual proxy enabled states are preserved
       this.config.proxyEnabled = true;
       

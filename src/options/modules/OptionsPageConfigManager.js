@@ -35,7 +35,7 @@ export class OptionsPageConfigManager {
           proxies: [],
           version: 2
         };
-        
+
         // Initialize empty proxy array if needed
         if (!this.currentConfig.proxies || !Array.isArray(this.currentConfig.proxies)) {
           this.currentConfig.proxies = [];
@@ -356,10 +356,10 @@ class ConfigSaver {
   async executeSave(config) {
     this.saveInProgress = true;
     this.lastSaveTime = Date.now();
-    
+
     try {
       await browser.storage.local.set({ config });
-      
+
       await browser.runtime.sendMessage({
         action: MESSAGE_ACTIONS.SAVE_CONFIG,
         config
